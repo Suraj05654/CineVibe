@@ -3,7 +3,7 @@
 
 @import "tailwindcss";
 
-/* @theme {
+@theme {
   --color-primary: #030014;
 
   --color-light-100: #cecefb;
@@ -17,9 +17,9 @@
 
   --breakpoint-xs: 480px;
 
-  --background-image-hero-pattern: url("/hero-bg.png");
+  --background-image-hero-pattern: url("https://www.google.com/url?sa=i&url=https%3A%2F%2Fgecdesigns.com%2Fbackground-templates%2Ffree&psig=AOvVaw3eF15J4quFAi_MrWPpSIiq&ust=1741509756954000&source=images&cd=vfe&opi=89978449&ved=0CBQQjRxqFwoTCPChycaL-osDFQAAAAAdAAAAABAE");
 }
- */
+
 @layer base {
   body {
     font-family: "DM Sans", serif;

@@ -3,7 +3,7 @@
 
 @import "tailwindcss";
 
-@theme {
+/* @theme {
   --color-primary: #030014;
 
   --color-light-100: #cecefb;
@@ -19,7 +19,7 @@
 
   --background-image-hero-pattern: url("/hero-bg.png");
 }
-
+ */
 @layer base {
   body {
     font-family: "DM Sans", serif;

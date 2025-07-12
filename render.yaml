@@ -5,8 +5,8 @@ services:
     plan: free
     buildCommand: |
       cd backend
-      pip install -r requirements.txt
-      python train_model.py
+      chmod +x build.sh
+      ./build.sh
     startCommand: |
       cd backend
       gunicorn app:app --bind 0.0.0.0:$PORT

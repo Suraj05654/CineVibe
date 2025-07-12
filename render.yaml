@@ -1,17 +1,9 @@
 services:
   - type: web
     name: movie-recommender-backend
-    env: python
+    env: docker
     plan: free
-    buildCommand: |
-      cd backend
-      chmod +x build.sh
-      ./build.sh
-    startCommand: |
-      cd backend
-      gunicorn app:app --bind 0.0.0.0:$PORT
+    dockerfilePath: ./backend/Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
       - key: VITE_TMDB_API_KEY
         sync: false 

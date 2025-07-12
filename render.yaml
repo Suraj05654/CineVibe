@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: movie-recommender-backend
+    env: python
+    plan: free
+    buildCommand: |
+      cd backend
+      pip install -r requirements.txt
+      python train_model.py
+    startCommand: |
+      cd backend
+      gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: VITE_TMDB_API_KEY
+        sync: false 

@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: movie-recommender-backend
-    env: docker
-    plan: free
-    dockerfilePath: ./backend/Dockerfile
-    envVars:
-      - key: VITE_TMDB_API_KEY
-        sync: false 

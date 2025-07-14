@@ -19,5 +19,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "react-player": "^3.2.0"
   }
-} 
+}

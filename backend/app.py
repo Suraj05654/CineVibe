@@ -44,28 +44,52 @@ def load_recommender_model():
         print("Model files not found. Please run the training script first.")
         return False
 
+# Auto-build model files if missing
+if not (os.path.exists('movie_list.pkl') and os.path.exists('similarity.pkl')):
+    print("Model files not found. Generating them now...")
+    recommender.load_data('movies.csv')
+    recommender.preprocess_data()
+    recommender.create_similarity_matrix()
+    recommender.save_model()
+    print("Model files generated.")
 
+
+def get_movie_trailer_url(tmdb_id):
+    """Fetch the first YouTube trailer URL for a movie from TMDB."""
+    try:
+        url = f"{TMDB_BASE_URL}/movie/{tmdb_id}/videos"
+        params = {
+            'api_key': TMDB_API_KEY,
+            'language': 'en-US'
+        }
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        for video in data.get('results', []):
+            if video['site'] == 'YouTube' and video['type'] == 'Trailer':
+                return f"https://www.youtube.com/watch?v={video['key']}"
+        return None
+    except Exception:
+        return None
+
+# Update get_movie_details_from_tmdb to include trailer_url
 
 def get_movie_details_from_tmdb(movie_title, tmdb_id=None):
-    """Get movie details from TMDB API"""
+    """Get movie details from TMDB API, including trailer URL."""
     try:
         if tmdb_id:
-            # Direct lookup by TMDB ID
             url = f"{TMDB_BASE_URL}/movie/{tmdb_id}"
             params = {
                 'api_key': TMDB_API_KEY,
                 'language': 'en-US'
             }
             response = requests.get(url, params=params)
-            
             if response.status_code == 404:
                 return None
             elif response.status_code != 200:
                 return None
-                
             movie = response.json()
         else:
-            # Fallback: search by title
             search_url = f"{TMDB_BASE_URL}/search/movie"
             params = {
                 'api_key': TMDB_API_KEY,
@@ -79,7 +103,8 @@ def get_movie_details_from_tmdb(movie_title, tmdb_id=None):
             if not data['results']:
                 return None
             movie = data['results'][0]
-        
+        # Fetch trailer URL
+        trailer_url = get_movie_trailer_url(movie['id'])
         return {
             'id': movie['id'],
             'title': movie['title'],
@@ -87,39 +112,11 @@ def get_movie_details_from_tmdb(movie_title, tmdb_id=None):
             'poster_path': movie['poster_path'],
             'release_date': movie['release_date'],
             'vote_average': movie['vote_average'],
-            'vote_count': movie['vote_count']
+            'vote_count': movie['vote_count'],
+            'trailer_url': trailer_url
         }
     except Exception as e:
         return None
-
-def get_movie_details_batch(movie_ids):
-    """Get details for multiple movies from TMDB"""
-    movies = []
-    for movie_id in movie_ids:
-        try:
-            url = f"{TMDB_BASE_URL}/movie/{movie_id}"
-            params = {
-                'api_key': TMDB_API_KEY,
-                'language': 'en-US'
-            }
-            
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            
-            movie = response.json()
-            movies.append({
-                'id': movie['id'],
-                'title': movie['title'],
-                'overview': movie['overview'],
-                'poster_path': movie['poster_path'],
-                'release_date': movie['release_date'],
-                'vote_average': movie['vote_average'],
-                'vote_count': movie['vote_count']
-            })
-        except Exception as e:
-            continue
-    
-    return movies
 
 @app.route('/api/recommendations', methods=['POST'])
 def get_recommendations():
@@ -128,28 +125,24 @@ def get_recommendations():
         data = request.get_json()
         movie_title = data.get('movie_title')
         num_recommendations = data.get('num_recommendations', 5)
-        
         if not movie_title:
             return jsonify({'error': 'Movie title is required'}), 400
-        
         # Get recommendations from our model
         if recommender.final_df is None or recommender.similarity_matrix is None:
             return jsonify({'error': 'Recommender model not loaded'}), 500
-        
         # Find the movie in our dataset
-        movie_matches = recommender.final_df[recommender.final_df['title'].str.contains(movie_title, case=False, na=False)]
-        
+        final_df = recommender.final_df
+        if not isinstance(final_df, pd.DataFrame):
+            final_df = pd.DataFrame(final_df)
+        movie_matches = final_df[final_df['title'].str.contains(movie_title, case=False, na=False)]
         if movie_matches.empty:
             return jsonify({'error': f'Movie "{movie_title}" not found in our dataset'}), 404
-        
         # Get the first match
         movie_index = movie_matches.index[0]
-        movie_title_exact = recommender.final_df.iloc[movie_index]['title']
-        
+        movie_title_exact = final_df.iloc[movie_index]['title']
         # Get similar movies
         distances = sorted(list(enumerate(recommender.similarity_matrix[movie_index])), 
                          reverse=True, key=lambda x: x[1])
-        
         # Get recommended movie titles
         recommended_movies = []
         found = 0
@@ -159,24 +152,20 @@ def get_recommendations():
         while found < num_recommendations and i < len(distances) and attempts < max_attempts:
             idx = distances[i][0]
             similarity_score = distances[i][1]
-            row = recommender.final_df.iloc[idx]
+            row = final_df.iloc[idx]
             recommended_title = row['title']
-            tmdb_id = row['movie_id'] if 'movie_id' in row else None
-            
-            movie_details = get_movie_details_from_tmdb(recommended_title, tmdb_id)
-            
+            # Fetch details from TMDB
+            movie_details = get_movie_details_from_tmdb(recommended_title)
             if movie_details and movie_details.get('poster_path'):
                 movie_details['similarity_score'] = float(similarity_score)
                 recommended_movies.append(movie_details)
                 found += 1
-            
             i += 1
             attempts += 1
         return jsonify({
             'input_movie': movie_title_exact,
             'recommendations': recommended_movies
         })
-        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -187,15 +176,14 @@ def search_movies():
         query = request.args.get('q', '')
         if not query:
             return jsonify({'error': 'Search query is required'}), 400
-        
         if recommender.final_df is None:
             return jsonify({'error': 'Recommender model not loaded'}), 500
-        
-        matches = recommender.final_df[recommender.final_df['title'].str.contains(query, case=False, na=False)]
+        final_df = recommender.final_df
+        if not isinstance(final_df, pd.DataFrame):
+            final_df = pd.DataFrame(final_df)
+        matches = final_df[final_df['title'].str.contains(query, case=False, na=False)]
         movie_titles = matches['title'].tolist()[:10]  # Limit to 10 results
-        
         return jsonify({'movies': movie_titles})
-        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

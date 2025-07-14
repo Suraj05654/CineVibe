@@ -24,4 +24,4 @@ EXPOSE 5000
 RUN if [ ! -f "movie_list.pkl" ] || [ ! -f "similarity.pkl" ]; then python train_model.py; fi
 
 # Start the app with gunicorn
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000"] 
+CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"] 

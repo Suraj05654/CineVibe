@@ -28,7 +28,7 @@
   }
 
   h1 {
-    @apply mx-auto max-w-4xl text-center text-5xl font-bold leading-tight tracking-[-1%] text-white sm:text-[64px] sm:leading-[76px];
+    @apply mx-auto max-w-4xl text-center text-4xl font-bold leading-tight tracking-[-1%] text-white sm:text-5xl sm:leading-[56px];
   }
 
   h2 {
@@ -36,11 +36,12 @@
   }
 
   main {
-    @apply min-h-screen relative bg-primary;
+    min-height: 100vh;
+    padding-bottom: 0;
   }
 
   header {
-    @apply sm:mt-10 mt-5;
+    @apply sm:mt-0 mt-0;
   }
 
   header img {
@@ -54,7 +55,7 @@
   }
 
   .wrapper {
-    @apply px-5 py-12 xs:p-10 max-w-7xl mx-auto flex flex-col relative z-10;
+    @apply px-5 pt-0 pb-0 xs:py-0 max-w-7xl mx-auto flex flex-col relative z-10;
   }
 
   .trending {
@@ -217,4 +218,8 @@
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+body, html {
+  overflow-x: hidden;
 }

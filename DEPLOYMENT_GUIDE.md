@@ -1,74 +1,29 @@
-# 🚀 Deployment Guide
+# 🚀 Deployment Guide (CineVibe)
 
-## Render Deployment (Backend)
+## Backend (Render, Railway, Heroku, etc.)
+1. Push your code to GitHub.
+2. Create a new web service on your platform (Python environment).
+3. Set build/start commands:
+   - Build: `cd backend && pip install -r requirements.txt`
+   - Start: `cd backend && gunicorn app:app --bind 0.0.0.0:$PORT`
+4. Add environment variable: `VITE_TMDB_API_KEY=your_api_key_here`
+5. Deploy and grab your backend URL.
 
-### 1. Connect to Render
-- Go to [Render Dashboard](https://dashboard.render.com)
-- Click "New +" → "Web Service"
-- Connect your GitHub repository
+## Frontend (Vercel, Netlify, etc.)
+1. Import your repo to Vercel/Netlify.
+2. Set root directory to `frontend`.
+3. Build command: `npm run build`
+4. Output directory: `dist`
+5. Add environment variables:
+   - `VITE_TMDB_API_KEY=your_api_key_here`
+   - `VITE_API_BASE_URL=your_backend_url`
+6. Deploy and your app is live!
 
-### 2. Configure the Service
-- **Name**: `movie-recommender-backend`
-- **Environment**: `Python`
-- **Build Command**: 
-  ```bash
-  cd backend
-  pip install -r requirements.txt
-  python train_model.py
-  ```
-- **Start Command**:
-  ```bash
-  cd backend
-  gunicorn app:app --bind 0.0.0.0:$PORT
-  ```
+## Tips
+- Use Python 3.11+ for backend.
+- If you see build/model errors, check your API key and CSV files.
+- For help, open an issue or check your platform’s build logs.
 
-### 3. Environment Variables
-Add these in Render dashboard:
-- `VITE_TMDB_API_KEY`: Your TMDB API key
+---
 
-### 4. Deploy
-- Click "Create Web Service"
-- Wait for build to complete (5-10 minutes)
-- Copy the generated URL
-
-## Vercel Deployment (Frontend)
-
-### 1. Connect to Vercel
-- Go to [Vercel Dashboard](https://vercel.com/dashboard)
-- Click "New Project"
-- Import your GitHub repository
-
-### 2. Configure
-- **Framework Preset**: Vite
-- **Root Directory**: `frontend`
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
-
-### 3. Environment Variables
-Add in Vercel dashboard:
-- `VITE_TMDB_API_KEY`: Your TMDB API key
-- `VITE_API_BASE_URL`: Your Render backend URL
-
-### 4. Deploy
-- Click "Deploy"
-- Wait for build to complete
-- Your app will be live!
-
-## Troubleshooting
-
-### Common Issues:
-
-1. **Build Fails**: 
-   - Check Python version (should be 3.11)
-   - Ensure all dependencies are compatible
-
-2. **Model Training Fails**:
-   - Verify CSV files are present
-   - Check file permissions
-
-3. **API Errors**:
-   - Verify TMDB API key is correct
-   - Check CORS settings
-
-### Support
-If you encounter issues, check the build logs in Render dashboard for detailed error messages. 
+Happy deploying! 🚀 

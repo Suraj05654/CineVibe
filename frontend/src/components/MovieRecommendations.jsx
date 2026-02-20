@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import MovieCard from './MovieCard.jsx'
 import Spinner from './Spinner.jsx'
 import { API_CONFIG } from '../config.js'
 
-const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY
 
 const MovieRecommendations = () => {
   const [searchTerm, setSearchTerm] = useState('')
@@ -21,20 +21,30 @@ const MovieRecommendations = () => {
       setShowSuggestions(false)
       return
     }
-    const controller = new AbortController();
+
+    const controller = new AbortController()
+
     const fetchSuggestions = async () => {
       try {
-        const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(searchTerm)}`);
-        const data = await res.json();
-        setSuggestions(data.results.slice(0, 6));
-        setShowSuggestions(true);
-      } catch (e) {
+        const response = await fetch(
+          `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(searchTerm)}`,
+          { signal: controller.signal },
+        )
+        if (!response.ok) throw new Error('Failed to load suggestions')
+
+        const data = await response.json()
+        setSuggestions((data.results || []).slice(0, 6))
+        setShowSuggestions(true)
+      } catch (fetchError) {
+        if (fetchError.name === 'AbortError') return
         setSuggestions([])
         setShowSuggestions(false)
       }
     }
-    fetchSuggestions();
-    return () => controller.abort();
+
+    fetchSuggestions()
+
+    return () => controller.abort()
   }, [searchTerm])
 
   const getRecommendations = async (movieTitle) => {
@@ -42,10 +52,12 @@ const MovieRecommendations = () => {
       setError('Please enter a movie title')
       return
     }
+
     setIsLoading(true)
     setError('')
     setRecommendations([])
     setShowSuggestions(false)
+
     try {
       const response = await fetch(`${API_CONFIG.BASE_URL}/api/recommendations`, {
         method: 'POST',
@@ -54,25 +66,27 @@ const MovieRecommendations = () => {
         },
         body: JSON.stringify({
           movie_title: movieTitle,
-          num_recommendations: 4
-        })
+          num_recommendations: 4,
+        }),
       })
+
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to get recommendations')
       }
+
       const data = await response.json()
       setRecommendations(data.recommendations)
       setInputMovie(data.input_movie)
-    } catch (err) {
-      setError(err.message)
+    } catch (requestError) {
+      setError(requestError.message)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
+  const handleSubmit = (event) => {
+    event.preventDefault()
     getRecommendations(searchTerm)
   }
 
@@ -80,23 +94,28 @@ const MovieRecommendations = () => {
     setSearchTerm(title)
     setShowSuggestions(false)
     getRecommendations(title)
-    if (inputRef.current) inputRef.current.blur();
+    if (inputRef.current) inputRef.current.blur()
   }
 
   return (
-    <section className="recommendations flex flex-col items-center mt-8">
+    <section className="recommendations flex flex-col items-center glass-panel p-5 sm:p-8">
       <h2 className="text-center w-full">Get Movie Recommendations</h2>
-      <form onSubmit={handleSubmit} className="recommendation-form flex flex-col sm:flex-row gap-4 justify-center w-full max-w-2xl mx-auto">
+      <form
+        onSubmit={handleSubmit}
+        className="recommendation-form flex flex-col sm:flex-row gap-4 justify-center w-full max-w-2xl mx-auto"
+      >
         <div className="search-container relative flex-1">
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="Enter a movie title..."
             className="search-input"
             autoComplete="off"
             ref={inputRef}
-            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+            onFocus={() => {
+              if (suggestions.length > 0) setShowSuggestions(true)
+            }}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
           />
           <button type="submit" className="search-button" disabled={isLoading}>
@@ -104,15 +123,26 @@ const MovieRecommendations = () => {
           </button>
           {showSuggestions && suggestions.length > 0 && (
             <ul className="absolute left-0 right-0 top-full z-20 bg-[#232044] border border-[#AB8BFF] rounded-lg mt-1 shadow-lg max-h-72 overflow-y-auto">
-              {suggestions.map(s => (
+              {suggestions.map((suggestion) => (
                 <li
-                  key={s.id}
+                  key={suggestion.id}
                   className="px-4 py-2 cursor-pointer hover:bg-[#AB8BFF]/20 text-white text-left"
-                  onMouseDown={() => handleSuggestionClick(s.title)}
+                  onMouseDown={() => handleSuggestionClick(suggestion.title)}
                 >
                   <div className="flex items-center gap-2">
-                    {s.poster_path && <img src={`https://image.tmdb.org/t/p/w92${s.poster_path}`} alt={s.title} className="w-8 h-12 object-cover rounded" />}
-                    <span>{s.title} {s.release_date ? <span className="text-xs text-gray-400 ml-2">({s.release_date.split('-')[0]})</span> : null}</span>
+                    {suggestion.poster_path && (
+                      <img
+                        src={`https://image.tmdb.org/t/p/w92${suggestion.poster_path}`}
+                        alt={suggestion.title}
+                        className="w-8 h-12 object-cover rounded"
+                      />
+                    )}
+                    <span>
+                      {suggestion.title}{' '}
+                      {suggestion.release_date ? (
+                        <span className="text-xs text-gray-400 ml-2">({suggestion.release_date.split('-')[0]})</span>
+                      ) : null}
+                    </span>
                   </div>
                 </li>
               ))}
@@ -130,7 +160,7 @@ const MovieRecommendations = () => {
       {inputMovie && (
         <div className="w-full flex justify-center mt-8 mb-2">
           <h3 className="input-movie text-center max-w-2xl text-lg font-semibold text-white/90">
-            Recommendations for: <span className="highlight">{inputMovie}</span>
+            Recommendations for: <span className="text-gradient">{inputMovie}</span>
           </h3>
         </div>
       )}
@@ -141,7 +171,7 @@ const MovieRecommendations = () => {
           <p>Finding similar movies...</p>
         </div>
       ) : recommendations.length > 0 ? (
-        <div className="recommendations-grid grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 w-full justify-center mb-12">
+        <div className="recommendations-grid grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 w-full justify-center mb-2">
           {recommendations.map((movie, index) => (
             <div key={movie.id || index} className="relative h-full flex">
               <MovieCard movie={movie} />
@@ -158,4 +188,4 @@ const MovieRecommendations = () => {
   )
 }
 
-export default MovieRecommendations 
+export default MovieRecommendations

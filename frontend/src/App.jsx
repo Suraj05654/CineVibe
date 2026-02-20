@@ -7,7 +7,6 @@ import MovieCard from './components/MovieCard.jsx'
 import TrailerModal from './components/TrailerModal.jsx'
 import MovieDetailsModal from './components/MovieDetailsModal.jsx'
 import MovieRecommendations from './components/MovieRecommendations.jsx'
-import { useDebounce } from 'react-use'
 import { API_CONFIG, TMDB_API_OPTIONS } from './config.js'
 
 const API_BASE_URL = API_CONFIG.TMDB_BASE_URL;

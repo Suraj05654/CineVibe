@@ -1,22 +1,47 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-const LoginModal = ({ isOpen, onClose, onLogin, loading, error }) => {
+const LoginModal = ({ isOpen, onClose, onLogin, onSignup, loading, error }) => {
+  const [isSignupMode, setIsSignupMode] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsSignupMode(false);
+      setName('');
+      setEmail('');
+      setPassword('');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (isSignupMode) {
+      onSignup(name, email, password);
+      return;
+    }
     onLogin(email, password);
   };
 
   return (
     <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#120726]/80 p-5 backdrop-blur-lg" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold">Login to continue</h3>
+        <h3 className="text-lg font-semibold">{isSignupMode ? 'Create your account' : 'Login to continue'}</h3>
         <p className="mt-1 text-sm text-white/70">Use your account to manage My List and personalized picks.</p>
         <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+          {isSignupMode && (
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Full Name"
+              required
+              className="w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 outline-none"
+            />
+          )}
           <input
             type="email"
             value={email}
@@ -36,13 +61,20 @@ const LoginModal = ({ isOpen, onClose, onLogin, loading, error }) => {
           {error && <p className="text-sm text-red-300">{error}</p>}
           <div className="flex items-center gap-2">
             <button type="submit" disabled={loading} className="rounded-xl bg-white px-4 py-2 font-semibold text-black disabled:opacity-60">
-              {loading ? 'Logging in...' : 'Login'}
+              {loading ? (isSignupMode ? 'Creating account...' : 'Logging in...') : isSignupMode ? 'Sign Up' : 'Login'}
             </button>
             <button type="button" onClick={onClose} className="rounded-xl bg-white/15 px-4 py-2">
               Cancel
             </button>
           </div>
         </form>
+        <button
+          type="button"
+          onClick={() => setIsSignupMode((prev) => !prev)}
+          className="mt-4 text-sm text-white/80 underline-offset-4 hover:text-white hover:underline"
+        >
+          {isSignupMode ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
+        </button>
       </div>
     </div>
   );

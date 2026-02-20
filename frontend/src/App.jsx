@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ID } from 'appwrite';
 import { useDebounce } from 'react-use';
 import Navbar from './components/Navbar';
 import HeroBanner from './components/HeroBanner';
@@ -17,19 +18,18 @@ const API_KEY = API_CONFIG.TMDB_API_KEY;
 
 const buildPoster = (path, size = 'w500') => path ? `https://image.tmdb.org/t/p/${size}${path}` : '/no-movie.png';
 
-const createRowConfig = (recommendationData, recommendationSourceMovie, myList, user) => [
+const createRowConfig = (recommendationData, recommendationSourceMovie, myList) => [
   { key: 'trending', title: 'Trending Now', endpoint: `${API_BASE}/trending/movie/week?api_key=${API_KEY}` },
   { key: 'topRated', title: 'Top Rated', endpoint: `${API_BASE}/movie/top_rated?api_key=${API_KEY}` },
-  { key: 'india', title: 'Popular in India', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=popularity.desc&watch_region=IN&region=IN` },
-  { key: 'new', title: 'New Releases', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=release_date.desc&primary_release_date.lte=${new Date().toISOString().split('T')[0]}` },
-  { key: 'myList', title: 'My List', items: myList, forceRender: Boolean(user) },
   {
     key: 'becauseYouWatched',
     title: recommendationSourceMovie ? `Because You Watched ${recommendationSourceMovie}` : 'Because You Watched',
     items: recommendationData
   },
-  { key: 'recommended', title: 'Recommended For You', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=vote_average.desc&vote_count.gte=5000` }
-].filter((row) => row.endpoint || row.items?.length || row.forceRender);
+  { key: 'india', title: 'Popular in India', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=popularity.desc&watch_region=IN&region=IN` },
+  { key: 'new', title: 'New Releases', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=release_date.desc&primary_release_date.lte=${new Date().toISOString().split('T')[0]}` },
+  { key: 'myList', title: 'My List', items: myList }
+].filter((row) => row.endpoint || row.items?.length);
 
 const App = () => {
   const [rows, setRows] = useState({});
@@ -46,8 +46,8 @@ const App = () => {
   const [recommendationSourceMovie, setRecommendationSourceMovie] = useState('');
   const [user, setUser] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [loginError, setLoginError] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
   const [recommendationRefreshSignal, setRecommendationRefreshSignal] = useState(0);
 
   useDebounce(() => setDebouncedSearchTerm(searchTerm), 450, [searchTerm]);
@@ -79,7 +79,7 @@ const App = () => {
       const map = Object.fromEntries((genreData.genres || []).map((genre) => [genre.id, genre.name]));
       setGenresMap(map);
 
-      const rowConfig = createRowConfig(recommendationData, recommendationSourceMovie, myList, user);
+      const rowConfig = createRowConfig(recommendationData, recommendationSourceMovie, myList);
       const rowResponses = await Promise.all(
         rowConfig.filter((row) => row.endpoint).map((row) => fetch(row.endpoint, TMDB_API_OPTIONS).then((res) => res.json()))
       );
@@ -154,8 +154,8 @@ const App = () => {
   };
 
   const handleLogin = async (email, password) => {
-    setLoginError('');
-    setLoginLoading(true);
+    setAuthError('');
+    setAuthLoading(true);
     try {
       await account.createEmailPasswordSession(email, password);
       const current = await account.get();
@@ -164,9 +164,27 @@ const App = () => {
       setRecommendationRefreshSignal((value) => value + 1);
       setLoginOpen(false);
     } catch (error) {
-      setLoginError(error?.message || 'Login failed.');
+      setAuthError(error?.message || 'Login failed.');
     } finally {
-      setLoginLoading(false);
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignup = async (name, email, password) => {
+    setAuthError('');
+    setAuthLoading(true);
+    try {
+      await account.create(ID.unique(), email, password, name);
+      await account.createEmailPasswordSession(email, password);
+      const current = await account.get();
+      setUser(current);
+      await loadWishlist(current.$id);
+      setRecommendationRefreshSignal((value) => value + 1);
+      setLoginOpen(false);
+    } catch (error) {
+      setAuthError(error?.message || 'Sign up failed.');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -179,8 +197,8 @@ const App = () => {
   };
 
   const rowConfig = useMemo(
-    () => createRowConfig(recommendationData, recommendationSourceMovie, myList, user),
-    [recommendationData, recommendationSourceMovie, myList, user]
+    () => createRowConfig(recommendationData, recommendationSourceMovie, myList),
+    [recommendationData, recommendationSourceMovie, myList]
   );
 
   const handleMyListClick = () => {
@@ -212,7 +230,7 @@ const App = () => {
         isInMyList={isInMyList(featuredMovie?.id)}
       />
 
-      <section className="relative z-20 -mt-20 space-y-10 px-4 pb-16 md:px-8 lg:px-12">
+      <section className="relative z-20 -mt-12 space-y-10 px-4 pb-16 md:px-8 lg:px-12">
         <MovieRecommendations
           userId={user?.$id ?? 'guest'}
           refreshSignal={recommendationRefreshSignal}
@@ -267,8 +285,9 @@ const App = () => {
         isOpen={loginOpen}
         onClose={() => setLoginOpen(false)}
         onLogin={handleLogin}
-        loading={loginLoading}
-        error={loginError}
+        onSignup={handleSignup}
+        loading={authLoading}
+        error={authError}
       />
     </main>
   );

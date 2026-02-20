@@ -4,10 +4,7 @@ import { databases, APPWRITE_DATABASE_ID, APPWRITE_WISHLIST_COLLECTION_ID } from
 const normalizeWishlistMovie = (doc) => ({
   id: Number(doc.movieId),
   title: doc.title,
-  poster_path: doc.posterPath,
-  backdrop_path: doc.backdropPath,
-  vote_average: Number(doc.voteAverage) || 0,
-  overview: doc.overview || ''
+  poster_path: doc.poster_path || ''
 });
 
 const canUseWishlistCollection = APPWRITE_DATABASE_ID && APPWRITE_WISHLIST_COLLECTION_ID;
@@ -27,14 +24,20 @@ export const getWishlistByUser = async (userId) => {
 export const addWishlistMovie = async (userId, movie) => {
   if (!canUseWishlistCollection || !userId) return;
 
+  const existing = await databases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_WISHLIST_COLLECTION_ID, [
+    Query.equal('userId', userId),
+    Query.equal('movieId', String(movie.id)),
+    Query.limit(1)
+  ]);
+
+  if (existing.documents?.length) return;
+
   await databases.createDocument(APPWRITE_DATABASE_ID, APPWRITE_WISHLIST_COLLECTION_ID, ID.unique(), {
     userId,
     movieId: String(movie.id),
     title: movie.title,
-    posterPath: movie.poster_path || '',
-    backdropPath: movie.backdrop_path || '',
-    voteAverage: String(movie.vote_average || ''),
-    overview: movie.overview || ''
+    poster_path: movie.poster_path || '',
+    createdAt: new Date().toISOString()
   });
 };
 

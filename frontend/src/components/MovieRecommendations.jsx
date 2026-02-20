@@ -1,161 +1,112 @@
-import React, { useState, useEffect, useRef } from 'react'
-import MovieCard from './MovieCard.jsx'
-import Spinner from './Spinner.jsx'
-import { API_CONFIG } from '../config.js'
+import { useEffect, useRef, useState } from 'react';
+import { API_CONFIG } from '../config';
 
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
 
-const MovieRecommendations = () => {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [recommendations, setRecommendations] = useState([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [inputMovie, setInputMovie] = useState('')
-  const [suggestions, setSuggestions] = useState([])
-  const [showSuggestions, setShowSuggestions] = useState(false)
-  const inputRef = useRef(null)
+const normalizeRecommendations = (payload) => {
+  const candidates = payload?.recommendations || payload?.results || [];
+  if (!Array.isArray(candidates)) return { inputMovie: payload?.input_movie || payload?.inputMovie || '', recommendations: [] };
+  return {
+    inputMovie: payload?.input_movie || payload?.inputMovie || '',
+    recommendations: candidates.map((movie) => ({
+      id: movie.id,
+      title: movie.title || movie.name,
+      poster_path: movie.poster_path,
+      backdrop_path: movie.backdrop_path,
+      vote_average: movie.vote_average,
+      release_date: movie.release_date,
+      overview: movie.overview
+    })).filter((movie) => movie.id)
+  };
+};
+
+const MovieRecommendations = ({ onRecommendationsLoaded, user }) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef(null);
 
   useEffect(() => {
-    if (searchTerm.length < 2) {
-      setSuggestions([])
-      setShowSuggestions(false)
-      return
+    if (!isModalOpen || searchTerm.length < 2) {
+      setSuggestions([]);
+      return;
     }
-    const controller = new AbortController();
-    const fetchSuggestions = async () => {
+
+    const timer = setTimeout(async () => {
       try {
         const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(searchTerm)}`);
         const data = await res.json();
-        setSuggestions(data.results.slice(0, 6));
-        setShowSuggestions(true);
-      } catch (e) {
-        setSuggestions([])
-        setShowSuggestions(false)
+        setSuggestions((data.results || []).slice(0, 6));
+      } catch {
+        setSuggestions([]);
       }
-    }
-    fetchSuggestions();
-    return () => controller.abort();
-  }, [searchTerm])
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, isModalOpen]);
 
   const getRecommendations = async (movieTitle) => {
-    if (!movieTitle.trim()) {
-      setError('Please enter a movie title')
-      return
-    }
-    setIsLoading(true)
-    setError('')
-    setRecommendations([])
-    setShowSuggestions(false)
+    if (!movieTitle?.trim()) return;
+    setIsLoading(true);
+    setError('');
     try {
+      const uid = user?.$id ?? 'guest';
       const response = await fetch(`${API_CONFIG.BASE_URL}/api/recommendations`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          movie_title: movieTitle,
-          num_recommendations: 4
-        })
-      })
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to get recommendations')
-      }
-      const data = await response.json()
-      setRecommendations(data.recommendations)
-      setInputMovie(data.input_movie)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ movie_title: movieTitle, num_recommendations: 12, uid })
+      });
+      if (!response.ok) throw new Error('Could not fetch recommendations.');
+      const data = await response.json();
+      const normalized = normalizeRecommendations(data);
+      onRecommendationsLoaded(normalized);
+      setIsModalOpen(false);
     } catch (err) {
-      setError(err.message)
+      setError(err.message);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    getRecommendations(searchTerm)
-  }
-
-  const handleSuggestionClick = (title) => {
-    setSearchTerm(title)
-    setShowSuggestions(false)
-    getRecommendations(title)
-    if (inputRef.current) inputRef.current.blur();
-  }
+  };
 
   return (
-    <section className="recommendations flex flex-col items-center mt-8">
-      <h2 className="text-center w-full">Get Movie Recommendations</h2>
-      <form onSubmit={handleSubmit} className="recommendation-form flex flex-col sm:flex-row gap-4 justify-center w-full max-w-2xl mx-auto">
-        <div className="search-container relative flex-1">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Enter a movie title..."
-            className="search-input"
-            autoComplete="off"
-            ref={inputRef}
-            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
-          />
-          <button type="submit" className="search-button" disabled={isLoading}>
-            {isLoading ? 'Getting Recommendations...' : 'Get Recommendations'}
-          </button>
-          {showSuggestions && suggestions.length > 0 && (
-            <ul className="absolute left-0 right-0 top-full z-20 bg-[#232044] border border-[#AB8BFF] rounded-lg mt-1 shadow-lg max-h-72 overflow-y-auto">
-              {suggestions.map(s => (
-                <li
-                  key={s.id}
-                  className="px-4 py-2 cursor-pointer hover:bg-[#AB8BFF]/20 text-white text-left"
-                  onMouseDown={() => handleSuggestionClick(s.title)}
-                >
-                  <div className="flex items-center gap-2">
-                    {s.poster_path && <img src={`https://image.tmdb.org/t/p/w92${s.poster_path}`} alt={s.title} className="w-8 h-12 object-cover rounded" />}
-                    <span>{s.title} {s.release_date ? <span className="text-xs text-gray-400 ml-2">({s.release_date.split('-')[0]})</span> : null}</span>
-                  </div>
-                </li>
+    <>
+      <section className="rounded-2xl border border-white/10 bg-[#130726]/60 p-5 backdrop-blur-md">
+        <p className="text-lg font-semibold">Liked something recently? Tell us one movie.</p>
+        <p className="mt-1 text-sm text-white/70">We’ll craft a cinematic row tailored to your taste.</p>
+        <button onClick={() => setIsModalOpen(true)} className="mt-4 rounded-xl bg-gradient-to-r from-violet-200 to-indigo-300 px-5 py-2 font-semibold text-[#180531]">Get Suggestions</button>
+      </section>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70 p-4" onClick={() => setIsModalOpen(false)}>
+          <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-[#120726]/80 p-5 backdrop-blur-lg" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold">Pick one movie you enjoyed</h3>
+            <input
+              ref={inputRef}
+              autoFocus
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Type a movie title"
+              className="mt-3 w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 outline-none"
+            />
+            <div className="mt-2 space-y-1">
+              {suggestions.map((movie) => (
+                <button key={movie.id} onClick={() => getRecommendations(movie.title)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-white/10">
+                  {movie.poster_path && <img src={`https://image.tmdb.org/t/p/w92${movie.poster_path}`} alt={movie.title} className="h-12 w-8 rounded object-cover" />}
+                  <span>{movie.title}</span>
+                </button>
               ))}
-            </ul>
-          )}
-        </div>
-      </form>
-
-      {error && (
-        <div className="error-message">
-          <p>{error}</p>
-        </div>
-      )}
-
-      {inputMovie && (
-        <div className="w-full flex justify-center mt-8 mb-2">
-          <h3 className="input-movie text-center max-w-2xl text-lg font-semibold text-white/90">
-            Recommendations for: <span className="highlight">{inputMovie}</span>
-          </h3>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="loading-container">
-          <Spinner />
-          <p>Finding similar movies...</p>
-        </div>
-      ) : recommendations.length > 0 ? (
-        <div className="recommendations-grid grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 w-full justify-center mb-12">
-          {recommendations.map((movie, index) => (
-            <div key={movie.id || index} className="relative h-full flex">
-              <MovieCard movie={movie} />
-              {movie.similarity_score && (
-                <div className="similarity-score">
-                  <span>Similarity: {(movie.similarity_score * 100).toFixed(1)}%</span>
-                </div>
-              )}
             </div>
-          ))}
+            {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
+            <button onClick={() => getRecommendations(searchTerm)} disabled={isLoading || !searchTerm.trim()} className="mt-4 rounded-xl bg-white px-4 py-2 font-semibold text-black disabled:opacity-60">
+              {isLoading ? 'Finding...' : 'Build Recommendations'}
+            </button>
+          </div>
         </div>
-      ) : null}
-    </section>
-  )
-}
+      )}
+    </>
+  );
+};
 
-export default MovieRecommendations 
+export default MovieRecommendations;

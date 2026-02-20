@@ -139,14 +139,30 @@ const App = () => {
 
   const isInMyList = (movieId) => myList.some((item) => item.id === movieId);
 
-  const requireAuth = () => {
-    if (user) return true;
-    setLoginOpen(true);
-    return false;
+  const requireAuth = async () => {
+    if (!user) {
+      setLoginOpen(true);
+      return null;
+    }
+
+    try {
+      const current = await account.get();
+      if (current?.$id !== user.$id) {
+        setUser(current);
+        await loadWishlist(current.$id);
+      }
+      return current;
+    } catch {
+      setUser(null);
+      setMyList([]);
+      setLoginOpen(true);
+      return null;
+    }
   };
 
   const toggleMyList = async (movie) => {
-    if (!requireAuth()) return;
+    const sessionUser = await requireAuth();
+    if (!sessionUser) return;
 
     const movieId = Number(movie.id);
     const existingItem = myList.find((item) => item.id === movieId);
@@ -154,7 +170,7 @@ const App = () => {
     if (existingItem) {
       setMyList((prev) => prev.filter((item) => item.id !== movieId));
       try {
-        await removeWishlistMovie(existingItem.documentId);
+        await removeWishlistMovie(sessionUser.$id, existingItem.documentId);
       } catch (error) {
         console.error('Failed removing from wishlist', error);
         setMyList((prev) => {
@@ -174,7 +190,7 @@ const App = () => {
     setMyList((prev) => [optimisticItem, ...prev.filter((item) => item.id !== movieId)]);
 
     try {
-      const persistedMovie = await addWishlistMovie(user.$id, movie);
+      const persistedMovie = await addWishlistMovie(sessionUser.$id, movie);
       if (persistedMovie) {
         setMyList((prev) => prev.map((item) => (item.id === movieId ? persistedMovie : item)));
       }
@@ -232,8 +248,9 @@ const App = () => {
     [recommendationData, recommendationSourceMovie, myList]
   );
 
-  const handleMyListClick = () => {
-    if (!requireAuth()) return;
+  const handleMyListClick = async () => {
+    const sessionUser = await requireAuth();
+    if (!sessionUser) return;
     document.getElementById('my-list-row')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 

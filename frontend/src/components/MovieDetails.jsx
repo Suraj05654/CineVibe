@@ -3,21 +3,45 @@ import { API_CONFIG, TMDB_API_OPTIONS } from '../config';
 
 const MovieDetails = ({ movie, onClose, onPlayTrailer, onToggleMyList, isInMyList, onMoreInfo }) => {
   const [details, setDetails] = useState(null);
+  const [media, setMedia] = useState([]);
 
   useEffect(() => {
-    if (!movie) return;
+    if (!movie?.id) return;
+
     const fetchDetails = async () => {
-      const [full, cast, images, videos, similar] = await Promise.all([
+      const [full, cast, videos, similar] = await Promise.all([
         fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json()),
         fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}/credits?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json()),
-        fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}/images?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json()),
         fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}/videos?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json()),
         fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}/similar?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json())
       ]);
-      setDetails({ full, cast: cast.cast || [], images: images.backdrops || [], videos: videos.results || [], similar: similar.results || [] });
+      setDetails({ full, cast: cast.cast || [], similar: similar.results || [] });
+      setMedia((videos.results || []).slice(0, 8));
     };
-    fetchDetails().catch(() => setDetails(null));
-  }, [movie]);
+
+    fetchDetails().catch(() => {
+      setDetails(null);
+      setMedia([]);
+    });
+  }, [movie?.id]);
+
+  useEffect(() => {
+    if (!movie?.id) return;
+
+    const fetchMedia = async () => {
+      const images = await fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}/images?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json());
+      setMedia((current) => [
+        ...current,
+        ...((images.backdrops || []).slice(0, 8).map((img) => ({
+          id: img.file_path,
+          type: 'image',
+          file_path: img.file_path
+        })))
+      ]);
+    };
+
+    fetchMedia().catch(() => setMedia([]));
+  }, [movie?.id]);
 
   if (!movie) return null;
 
@@ -40,8 +64,8 @@ const MovieDetails = ({ movie, onClose, onPlayTrailer, onToggleMyList, isInMyLis
                 <div className="flex flex-wrap gap-2">{(details?.full?.genres || []).map((genre) => <span key={genre.id} className="rounded-full bg-white/10 px-3 py-1 text-xs">{genre.name}</span>)}</div>
                 <p className="max-w-3xl text-white/85 line-clamp-4">{details?.full?.overview || movie.overview}</p>
                 <div className="flex gap-3">
-                  <button onClick={() => onPlayTrailer(movie)} className="rounded bg-white px-5 py-2 font-semibold text-black">▶ Play Trailer</button>
-                  <button onClick={() => onToggleMyList(movie)} className="rounded bg-white/15 px-5 py-2">{isInMyList ? '✓ In My List' : '➕ Add to My List'}</button>
+                  <button onClick={() => onPlayTrailer(movie)} className="rounded-xl bg-white px-5 py-2 font-semibold text-black">▶ Play Trailer</button>
+                  <button onClick={() => onToggleMyList(movie)} className="rounded-xl bg-white/15 px-5 py-2">{isInMyList ? '✓ In My List' : '➕ Add to My List'}</button>
                 </div>
               </div>
             </div>
@@ -62,8 +86,12 @@ const MovieDetails = ({ movie, onClose, onPlayTrailer, onToggleMyList, isInMyLis
               <div>
                 <h3 className="mb-3 text-lg font-semibold">Media</h3>
                 <div className="hide-scrollbar flex gap-3 overflow-x-auto">
-                  {details?.videos?.slice(0, 8).map((video) => <div key={video.id} className="min-w-[220px] rounded-lg bg-white/10 p-3 text-sm">🎬 {video.name}</div>)}
-                  {details?.images?.slice(0, 8).map((img) => <img key={img.file_path} src={`https://image.tmdb.org/t/p/w500${img.file_path}`} alt="Scene" className="h-32 min-w-[220px] rounded-lg object-cover" loading="lazy" />)}
+                  {media.map((item) => (
+                    item.type === 'image' ?
+                      <img key={item.file_path} src={`https://image.tmdb.org/t/p/w500${item.file_path}`} alt="Scene" className="h-32 min-w-[220px] rounded-lg object-cover" loading="lazy" /> :
+                      <div key={item.id} className="min-w-[220px] rounded-lg bg-white/10 p-3 text-sm">🎬 {item.name}</div>
+                  ))}
+                  {!media.length && <p className="py-2 text-sm text-white/65">No media available for this title yet.</p>}
                 </div>
               </div>
 

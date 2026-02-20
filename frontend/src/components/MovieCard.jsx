@@ -19,8 +19,8 @@ const MovieCard = ({ movie, onPlayTrailer, onMoreInfo, onToggleMyList, isInMyLis
     <div className="mt-2 flex items-center justify-between gap-2 px-1">
       <p className="line-clamp-1 text-sm font-semibold text-white/90">{movie.title}</p>
       <div className="flex gap-1 text-white/85">
-        <button onClick={() => onPlayTrailer(movie)} className="rounded bg-white/10 px-1.5 py-0.5 text-xs hover:bg-white/20">▶</button>
-        <button onClick={() => onToggleMyList(movie)} className="rounded bg-white/10 px-1.5 py-0.5 text-xs hover:bg-white/20">{isInMyList ? '✓' : '➕'}</button>
+        <button onClick={() => onPlayTrailer(movie)} className="rounded-full bg-white/10 px-1.5 py-0.5 text-xs hover:bg-white/20">▶</button>
+        <button onClick={() => onToggleMyList(movie)} className="rounded-full bg-white/10 px-1.5 py-0.5 text-xs hover:bg-white/20">{isInMyList ? '✓' : '➕'}</button>
       </div>
     </div>
   </article>

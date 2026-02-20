@@ -7,25 +7,29 @@ import TrailerModal from './components/TrailerModal';
 import MovieDetails from './components/MovieDetails';
 import SearchOverlay from './components/SearchOverlay';
 import MovieRecommendations from './components/MovieRecommendations';
+import LoginModal from './components/LoginModal';
 import { API_CONFIG, TMDB_API_OPTIONS } from './config';
+import { account } from './services/appwrite';
+import { addWishlistMovie, getWishlistByUser, removeWishlistMovie } from './services/wishlist';
 
 const API_BASE = API_CONFIG.TMDB_BASE_URL;
 const API_KEY = API_CONFIG.TMDB_API_KEY;
 
 const buildPoster = (path, size = 'w500') => path ? `https://image.tmdb.org/t/p/${size}${path}` : '/no-movie.png';
 
-const createRowConfig = (recommendationData, recommendationSourceMovie) => [
+const createRowConfig = (recommendationData, recommendationSourceMovie, myList, user) => [
   { key: 'trending', title: 'Trending Now', endpoint: `${API_BASE}/trending/movie/week?api_key=${API_KEY}` },
   { key: 'topRated', title: 'Top Rated', endpoint: `${API_BASE}/movie/top_rated?api_key=${API_KEY}` },
   { key: 'india', title: 'Popular in India', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=popularity.desc&watch_region=IN&region=IN` },
   { key: 'new', title: 'New Releases', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=release_date.desc&primary_release_date.lte=${new Date().toISOString().split('T')[0]}` },
+  { key: 'myList', title: 'My List', items: myList, forceRender: Boolean(user) },
   {
     key: 'becauseYouWatched',
     title: recommendationSourceMovie ? `Because You Watched ${recommendationSourceMovie}` : 'Because You Watched',
     items: recommendationData
   },
   { key: 'recommended', title: 'Recommended For You', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=vote_average.desc&vote_count.gte=5000` }
-].filter((row) => row.endpoint || row.items?.length);
+].filter((row) => row.endpoint || row.items?.length || row.forceRender);
 
 const App = () => {
   const [rows, setRows] = useState({});
@@ -37,15 +41,36 @@ const App = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [trailerTarget, setTrailerTarget] = useState(null);
-  const [myList, setMyList] = useState(() => JSON.parse(localStorage.getItem('cinevibe-my-list') || '[]'));
+  const [myList, setMyList] = useState([]);
   const [recommendationData, setRecommendationData] = useState([]);
   const [recommendationSourceMovie, setRecommendationSourceMovie] = useState('');
+  const [user, setUser] = useState(null);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [recommendationRefreshSignal, setRecommendationRefreshSignal] = useState(0);
 
   useDebounce(() => setDebouncedSearchTerm(searchTerm), 450, [searchTerm]);
 
+  const loadWishlist = async (userId) => {
+    const items = await getWishlistByUser(userId);
+    setMyList(items || []);
+  };
+
   useEffect(() => {
-    localStorage.setItem('cinevibe-my-list', JSON.stringify(myList));
-  }, [myList]);
+    const bootstrapAuth = async () => {
+      try {
+        const current = await account.get();
+        setUser(current);
+        await loadWishlist(current.$id);
+      } catch {
+        setUser(null);
+        setMyList([]);
+      }
+    };
+
+    bootstrapAuth();
+  }, []);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -54,7 +79,7 @@ const App = () => {
       const map = Object.fromEntries((genreData.genres || []).map((genre) => [genre.id, genre.name]));
       setGenresMap(map);
 
-      const rowConfig = createRowConfig(recommendationData, recommendationSourceMovie);
+      const rowConfig = createRowConfig(recommendationData, recommendationSourceMovie, myList, user);
       const rowResponses = await Promise.all(
         rowConfig.filter((row) => row.endpoint).map((row) => fetch(row.endpoint, TMDB_API_OPTIONS).then((res) => res.json()))
       );
@@ -73,14 +98,7 @@ const App = () => {
     };
 
     fetchInitialData().catch((error) => console.error('Failed loading homepage data', error));
-  }, []);
-
-  useEffect(() => {
-    setRows((current) => ({
-      ...current,
-      becauseYouWatched: recommendationData
-    }));
-  }, [recommendationData]);
+  }, [recommendationData, recommendationSourceMovie, myList, user]);
 
   useEffect(() => {
     if (!debouncedSearchTerm.trim()) {
@@ -116,22 +134,75 @@ const App = () => {
 
   const isInMyList = (movieId) => myList.some((item) => item.id === movieId);
 
-  const toggleMyList = (movie) => {
-    setMyList((current) => {
-      const exists = current.some((item) => item.id === movie.id);
-      if (exists) return current.filter((item) => item.id !== movie.id);
-      return [...current, { id: movie.id, title: movie.title, poster_path: movie.poster_path }];
-    });
+  const requireAuth = () => {
+    if (user) return true;
+    setLoginOpen(true);
+    return false;
+  };
+
+  const toggleMyList = async (movie) => {
+    if (!requireAuth()) return;
+
+    const exists = isInMyList(movie.id);
+    if (exists) {
+      await removeWishlistMovie(user.$id, movie.id);
+    } else {
+      await addWishlistMovie(user.$id, movie);
+    }
+
+    await loadWishlist(user.$id);
+  };
+
+  const handleLogin = async (email, password) => {
+    setLoginError('');
+    setLoginLoading(true);
+    try {
+      await account.createEmailPasswordSession(email, password);
+      const current = await account.get();
+      setUser(current);
+      await loadWishlist(current.$id);
+      setRecommendationRefreshSignal((value) => value + 1);
+      setLoginOpen(false);
+    } catch (error) {
+      setLoginError(error?.message || 'Login failed.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await account.deleteSession('current');
+    setUser(null);
+    setMyList([]);
+    setRecommendationData([]);
+    setRecommendationSourceMovie('');
   };
 
   const rowConfig = useMemo(
-    () => createRowConfig(recommendationData, recommendationSourceMovie),
-    [recommendationData, recommendationSourceMovie]
+    () => createRowConfig(recommendationData, recommendationSourceMovie, myList, user),
+    [recommendationData, recommendationSourceMovie, myList, user]
   );
+
+  const handleMyListClick = () => {
+    if (!requireAuth()) return;
+    document.getElementById('my-list-row')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleBrowseClick = () => {
+    document.querySelector('main')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <main className="min-h-screen bg-[#030014] text-white">
-      <Navbar onSearchOpen={() => setSearchOpen(true)} myListCount={myList.length} />
+      <Navbar
+        onSearchOpen={() => setSearchOpen(true)}
+        myListCount={myList.length}
+        onMyListClick={handleMyListClick}
+        onAuthAction={() => setLoginOpen(true)}
+        onBrowseClick={handleBrowseClick}
+        user={user}
+        onLogout={handleLogout}
+      />
       <HeroBanner
         movie={featuredMovie}
         genresMap={genresMap}
@@ -143,23 +214,26 @@ const App = () => {
 
       <section className="relative z-20 -mt-20 space-y-10 px-4 pb-16 md:px-8 lg:px-12">
         <MovieRecommendations
+          userId={user?.$id ?? 'guest'}
+          refreshSignal={recommendationRefreshSignal}
           onRecommendationsLoaded={(payload) => {
-            setRecommendationSourceMovie(payload.inputMovie);
+            setRecommendationSourceMovie(payload.inputMovie || '');
             setRecommendationData(payload.recommendations || []);
           }}
         />
 
         {rowConfig.map((row) => (
-          <ContentRow
-            key={row.key}
-            title={row.title}
-            movies={rows[row.key] || row.items || []}
-            genresMap={genresMap}
-            onPlayTrailer={setTrailerTarget}
-            onMoreInfo={setSelectedMovie}
-            onToggleMyList={toggleMyList}
-            isInMyList={isInMyList}
-          />
+          <div key={row.key} id={row.key === 'myList' ? 'my-list-row' : undefined}>
+            <ContentRow
+              title={row.title}
+              movies={rows[row.key] || row.items || []}
+              genresMap={genresMap}
+              onPlayTrailer={setTrailerTarget}
+              onMoreInfo={setSelectedMovie}
+              onToggleMyList={toggleMyList}
+              isInMyList={isInMyList}
+            />
+          </div>
         ))}
       </section>
 
@@ -187,6 +261,14 @@ const App = () => {
         onToggleMyList={toggleMyList}
         isInMyList={selectedMovie ? isInMyList(selectedMovie.id) : false}
         onMoreInfo={setSelectedMovie}
+      />
+
+      <LoginModal
+        isOpen={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        onLogin={handleLogin}
+        loading={loginLoading}
+        error={loginError}
       />
     </main>
   );

@@ -3,206 +3,331 @@ import { useDebounce } from 'react-use'
 import Search from './components/Search.jsx'
 import Spinner from './components/Spinner.jsx'
 import MovieCard from './components/MovieCard.jsx'
-import MovieRecommendations from './components/MovieRecommendations.jsx'
+import TrailerModal from './components/TrailerModal.jsx'
+import MovieDetailsModal from './components/MovieDetailsModal.jsx'
 import { API_CONFIG, TMDB_API_OPTIONS } from './config.js'
 
-const PAGE_SIZE = 20
+const SECTION_CONFIG = [
+  { key: 'trending', label: 'Trending This Week', endpoint: '/trending/movie/week' },
+  { key: 'popular', label: 'Popular on CineVibe', endpoint: '/movie/popular' },
+  { key: 'topRated', label: 'Top Rated', endpoint: '/movie/top_rated' },
+  { key: 'nowPlaying', label: 'Now Playing', endpoint: '/movie/now_playing' },
+  { key: 'upcoming', label: 'Upcoming', endpoint: '/movie/upcoming' },
+]
+
+const sortOptions = [
+  { value: 'popularity.desc', label: 'Popularity ↓' },
+  { value: 'vote_average.desc', label: 'Rating ↓' },
+  { value: 'primary_release_date.desc', label: 'Newest ↓' },
+  { value: 'revenue.desc', label: 'Revenue ↓' },
+]
+
+const initialDiscoverFilters = {
+  genre: '',
+  sortBy: 'popularity.desc',
+  year: '',
+  rating: '0',
+  language: '',
+  region: '',
+  includeAdult: false,
+}
 
 const App = () => {
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-  const [movieList, setMovieList] = useState([])
-  const [errorMessage, setErrorMessage] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [trendingMovies, setTrendingMovies] = useState([])
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+
+  const [sections, setSections] = useState({})
+  const [featuredMovie, setFeaturedMovie] = useState(null)
   const [genres, setGenres] = useState([])
-  const [selectedGenre, setSelectedGenre] = useState('')
-  const [sortBy, setSortBy] = useState('popularity.desc')
-  const [page, setPage] = useState(1)
+  const [discoverFilters, setDiscoverFilters] = useState(initialDiscoverFilters)
+  const [discoverMovies, setDiscoverMovies] = useState([])
 
-  useDebounce(() => setDebouncedSearchTerm(searchTerm), 450, [searchTerm])
+  const [selectedMovie, setSelectedMovie] = useState(null)
+  const [trailerUrl, setTrailerUrl] = useState(null)
 
-  const hasMore = useMemo(() => movieList.length >= page * PAGE_SIZE, [movieList.length, page])
+  const [loading, setLoading] = useState(true)
+  const [discoverLoading, setDiscoverLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
 
-  const buildMoviesEndpoint = useCallback(({ query, targetPage, genre, sort }) => {
-    const params = new URLSearchParams({
-      api_key: API_CONFIG.TMDB_API_KEY,
-      page: String(targetPage),
-    })
+  useDebounce(() => setDebouncedSearchTerm(searchTerm.trim()), 450, [searchTerm])
 
-    if (query) {
-      params.set('query', query)
-      return `${API_CONFIG.TMDB_BASE_URL}/search/movie?${params.toString()}`
+  const apiBase = API_CONFIG.TMDB_BASE_URL
+  const apiKey = API_CONFIG.TMDB_API_KEY
+
+  const buildUrl = useCallback(
+    (path, params = {}) => {
+      const search = new URLSearchParams({ api_key: apiKey, ...params })
+      return `${apiBase}${path}?${search.toString()}`
+    },
+    [apiBase, apiKey],
+  )
+
+  const fetchJson = useCallback(
+    async (path, params = {}) => {
+      const response = await fetch(buildUrl(path, params), TMDB_API_OPTIONS)
+      if (!response.ok) throw new Error(`TMDB request failed: ${path}`)
+      return response.json()
+    },
+    [buildUrl],
+  )
+
+  const fetchHomeSections = useCallback(async () => {
+    if (!apiKey) {
+      setErrorMessage('TMDB API key is missing. Add VITE_TMDB_API_KEY in frontend/.env')
+      return
     }
 
-    params.set('sort_by', sort)
-    if (genre) params.set('with_genres', genre)
-
-    return `${API_CONFIG.TMDB_BASE_URL}/discover/movie?${params.toString()}`
-  }, [])
-
-  const fetchMovies = useCallback(async ({ targetPage = 1, append = false } = {}) => {
-    append ? setIsLoadingMore(true) : setIsLoading(true)
+    setLoading(true)
     setErrorMessage('')
 
     try {
-      const endpoint = buildMoviesEndpoint({
-        query: debouncedSearchTerm,
-        targetPage,
-        genre: selectedGenre,
-        sort: sortBy,
-      })
+      const [genreData, ...sectionData] = await Promise.all([
+        fetchJson('/genre/movie/list'),
+        ...SECTION_CONFIG.map((section) => fetchJson(section.endpoint)),
+      ])
 
-      const response = await fetch(endpoint, TMDB_API_OPTIONS)
-      if (!response.ok) throw new Error('Failed to fetch movies')
+      setGenres(genreData.genres || [])
 
-      const data = await response.json()
-      const nextResults = data.results || []
-      setMovieList((current) => (append ? [...current, ...nextResults] : nextResults))
-      setPage(targetPage)
+      const nextSections = SECTION_CONFIG.reduce((acc, section, index) => {
+        acc[section.key] = sectionData[index]?.results?.slice(0, 16) || []
+        return acc
+      }, {})
+
+      setSections(nextSections)
+      setFeaturedMovie(nextSections.trending?.[0] || nextSections.popular?.[0] || null)
     } catch (error) {
-      console.error('Error fetching movies:', error)
-      setErrorMessage('Unable to fetch movies right now. Please try again.')
-      if (!append) setMovieList([])
+      console.error(error)
+      setErrorMessage('Unable to load TMDB content right now. Please try again soon.')
     } finally {
-      append ? setIsLoadingMore(false) : setIsLoading(false)
+      setLoading(false)
     }
-  }, [buildMoviesEndpoint, debouncedSearchTerm, selectedGenre, sortBy])
+  }, [apiKey, fetchJson])
 
-  const loadTrendingMovies = useCallback(async () => {
-    try {
-      const response = await fetch(
-        `${API_CONFIG.TMDB_BASE_URL}/trending/movie/week?api_key=${API_CONFIG.TMDB_API_KEY}`,
-        TMDB_API_OPTIONS,
-      )
-      if (!response.ok) throw new Error('Failed to fetch trending movies')
-      const data = await response.json()
-      setTrendingMovies(data.results || [])
-    } catch (error) {
-      console.error('Error fetching trending movies:', error)
-    }
-  }, [])
+  const fetchDiscoverMovies = useCallback(async () => {
+    if (!apiKey) return
+    setDiscoverLoading(true)
 
-  const loadGenres = useCallback(async () => {
     try {
-      const response = await fetch(
-        `${API_CONFIG.TMDB_BASE_URL}/genre/movie/list?api_key=${API_CONFIG.TMDB_API_KEY}`,
-        TMDB_API_OPTIONS,
-      )
-      if (!response.ok) throw new Error('Failed to fetch genres')
-      const data = await response.json()
-      setGenres(data.genres || [])
+      const params = {
+        sort_by: discoverFilters.sortBy,
+        with_genres: discoverFilters.genre || undefined,
+        primary_release_year: discoverFilters.year || undefined,
+        'vote_average.gte': discoverFilters.rating,
+        with_original_language: discoverFilters.language || undefined,
+        region: discoverFilters.region || undefined,
+        include_adult: discoverFilters.includeAdult,
+      }
+
+      const queryPath = debouncedSearchTerm ? '/search/movie' : '/discover/movie'
+      const queryParams = debouncedSearchTerm
+        ? { query: debouncedSearchTerm, include_adult: discoverFilters.includeAdult }
+        : params
+
+      const data = await fetchJson(queryPath, queryParams)
+      setDiscoverMovies(data.results || [])
     } catch (error) {
-      console.error('Error fetching genres:', error)
+      console.error(error)
+      setDiscoverMovies([])
+    } finally {
+      setDiscoverLoading(false)
     }
-  }, [])
+  }, [apiKey, debouncedSearchTerm, discoverFilters, fetchJson])
+
+  const openMovieDetails = useCallback(
+    async (movieId) => {
+      try {
+        const details = await fetchJson(`/movie/${movieId}`, {
+          append_to_response: 'videos,credits,similar',
+        })
+        setSelectedMovie(details)
+      } catch (error) {
+        console.error(error)
+      }
+    },
+    [fetchJson],
+  )
+
+  const playTrailer = useCallback(
+    async (movieId) => {
+      try {
+        const data = await fetchJson(`/movie/${movieId}/videos`)
+        const trailer = (data.results || []).find(
+          (video) => video.site === 'YouTube' && ['Trailer', 'Teaser'].includes(video.type),
+        )
+        if (trailer) setTrailerUrl(`https://www.youtube.com/watch?v=${trailer.key}`)
+      } catch (error) {
+        console.error(error)
+      }
+    },
+    [fetchJson],
+  )
 
   useEffect(() => {
-    fetchMovies({ targetPage: 1, append: false })
-  }, [fetchMovies])
+    fetchHomeSections()
+  }, [fetchHomeSections])
 
   useEffect(() => {
-    loadTrendingMovies()
-    loadGenres()
-  }, [loadGenres, loadTrendingMovies])
+    fetchDiscoverMovies()
+  }, [fetchDiscoverMovies])
+
+  const heroBackdrop = useMemo(() => {
+    if (!featuredMovie?.backdrop_path) return ''
+    return `https://image.tmdb.org/t/p/original${featuredMovie.backdrop_path}`
+  }, [featuredMovie])
 
   return (
-    <main>
-      <div className="pattern" />
+    <main className="app-shell">
+      <div className="blue-overlay" />
+
       <div className="wrapper">
-        <header>
-          <img src="./hero.png" alt="Hero Banner" />
-          <h1>
-            Find <span className="text-gradient">Movies</span> You&apos;ll Enjoy Without the Hassle
-          </h1>
-          <Search searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
-
-          <div className="controls-panel glass-panel">
-            <div className="control-group">
-              <label htmlFor="genre-select">Genre</label>
-              <select
-                id="genre-select"
-                value={selectedGenre}
-                onChange={(event) => setSelectedGenre(event.target.value)}
-              >
-                <option value="">All Genres</option>
-                {genres.map((genre) => (
-                  <option key={genre.id} value={genre.id}>
-                    {genre.name}
-                  </option>
-                ))}
-              </select>
+        <header className="hero" style={heroBackdrop ? { backgroundImage: `url(${heroBackdrop})` } : undefined}>
+          <div className="hero-mask" />
+          <nav className="top-nav">
+            <div className="brand">
+              <img src="/logo.png" alt="CineVibe logo" />
+              <span>CineVibe</span>
             </div>
+            <p>Blue Edition</p>
+          </nav>
 
-            <div className="control-group">
-              <label htmlFor="sort-select">Sort</label>
-              <select id="sort-select" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
-                <option value="popularity.desc">Most Popular</option>
-                <option value="vote_average.desc">Top Rated</option>
-                <option value="release_date.desc">Newest</option>
-              </select>
-            </div>
-
-            <button className="ghost-button" type="button" onClick={() => setSearchTerm('')}>
-              Clear Search
-            </button>
+          <div className="hero-content">
+            <p className="eyebrow">Streaming-grade movie discovery</p>
+            <h1>Discover Movies in a Premium Blue Experience</h1>
+            <p>
+              Search, filter, browse by live TMDB categories, open full metadata, and watch trailers in a full-size
+              cinematic player.
+            </p>
+            {featuredMovie && (
+              <div className="hero-actions">
+                <button className="primary-btn" type="button" onClick={() => playTrailer(featuredMovie.id)}>
+                  ▶ Watch Featured Trailer
+                </button>
+                <button className="secondary-btn" type="button" onClick={() => openMovieDetails(featuredMovie.id)}>
+                  More Info
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
-        {trendingMovies.length > 0 && (
-          <section className="trending glass-panel">
-            <h2>Trending Movies</h2>
-            <ul>
-              {trendingMovies.map((movie, index) => (
-                <li key={movie.id}>
-                  <p>{index + 1}</p>
-                  <img
-                    src={movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : '/no-movie.png'}
-                    alt={movie.title}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        <MovieRecommendations />
-
-        <section className="all-movies">
-          <div className="section-header">
-            <h2>All Movies</h2>
-            <p>{movieList.length} titles loaded</p>
+        <section className="discover-panel">
+          <div className="discover-header">
+            <h2>Explore TMDB</h2>
+            <p>{discoverMovies.length} results</p>
           </div>
 
-          {isLoading ? (
-            <Spinner />
-          ) : errorMessage ? (
-            <p className="text-red-400">{errorMessage}</p>
-          ) : (
-            <>
-              <ul>
-                {movieList.map((movie) => (
-                  <MovieCard key={movie.id} movie={movie} />
-                ))}
-              </ul>
+          <Search searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
 
-              {hasMore && (
-                <div className="load-more-wrap">
-                  <button
-                    type="button"
-                    className="search-button"
-                    disabled={isLoadingMore}
-                    onClick={() => fetchMovies({ targetPage: page + 1, append: true })}
-                  >
-                    {isLoadingMore ? 'Loading…' : 'Load More'}
-                  </button>
-                </div>
-              )}
-            </>
+          <div className="filters-grid">
+            <select value={discoverFilters.genre} onChange={(e) => setDiscoverFilters((prev) => ({ ...prev, genre: e.target.value }))}>
+              <option value="">All Genres</option>
+              {genres.map((genre) => (
+                <option key={genre.id} value={genre.id}>
+                  {genre.name}
+                </option>
+              ))}
+            </select>
+
+            <select value={discoverFilters.sortBy} onChange={(e) => setDiscoverFilters((prev) => ({ ...prev, sortBy: e.target.value }))}>
+              {sortOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              placeholder="Year"
+              min="1900"
+              max="2100"
+              value={discoverFilters.year}
+              onChange={(e) => setDiscoverFilters((prev) => ({ ...prev, year: e.target.value }))}
+            />
+
+            <input
+              type="number"
+              placeholder="Min rating (0-10)"
+              min="0"
+              max="10"
+              step="0.5"
+              value={discoverFilters.rating}
+              onChange={(e) => setDiscoverFilters((prev) => ({ ...prev, rating: e.target.value }))}
+            />
+
+            <input
+              type="text"
+              placeholder="Language (en)"
+              maxLength="2"
+              value={discoverFilters.language}
+              onChange={(e) => setDiscoverFilters((prev) => ({ ...prev, language: e.target.value.toLowerCase() }))}
+            />
+
+            <input
+              type="text"
+              placeholder="Region (US)"
+              maxLength="2"
+              value={discoverFilters.region}
+              onChange={(e) => setDiscoverFilters((prev) => ({ ...prev, region: e.target.value.toUpperCase() }))}
+            />
+          </div>
+
+          <label className="adult-toggle">
+            <input
+              type="checkbox"
+              checked={discoverFilters.includeAdult}
+              onChange={(e) => setDiscoverFilters((prev) => ({ ...prev, includeAdult: e.target.checked }))}
+            />
+            Include adult content
+          </label>
+
+          {discoverLoading ? (
+            <Spinner />
+          ) : (
+            <div className="discover-grid">
+              {discoverMovies.slice(0, 20).map((movie) => (
+                <MovieCard
+                  key={movie.id}
+                  movie={movie}
+                  onPlayTrailer={playTrailer}
+                  onOpenDetails={openMovieDetails}
+                />
+              ))}
+            </div>
           )}
         </section>
+
+        {SECTION_CONFIG.map((section) => (
+          <section key={section.key} className="rail-section">
+            <h2>{section.label}</h2>
+            <div className="rail-row">
+              {(sections[section.key] || []).map((movie) => (
+                <MovieCard
+                  key={movie.id}
+                  movie={movie}
+                  compact
+                  onPlayTrailer={playTrailer}
+                  onOpenDetails={openMovieDetails}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+
+
+        {loading && <Spinner />}
+        {errorMessage && <p className="error-text">{errorMessage}</p>}
       </div>
+
+      <TrailerModal trailerUrl={trailerUrl} onClose={() => setTrailerUrl(null)} />
+      <MovieDetailsModal
+        movie={selectedMovie}
+        onClose={() => setSelectedMovie(null)}
+        onPlayTrailer={() => {
+          if (!selectedMovie) return
+          playTrailer(selectedMovie.id)
+        }}
+      />
     </main>
   )
 }

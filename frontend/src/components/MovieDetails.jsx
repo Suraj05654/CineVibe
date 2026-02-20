@@ -2,17 +2,10 @@ import { useEffect, useState } from 'react';
 import { API_CONFIG, TMDB_API_OPTIONS } from '../config';
 
 const MovieDetails = ({ movie, onClose, onPlayTrailer, onToggleMyList, isInMyList, onMoreInfo }) => {
-  const [details, setDetails] = useState({
-    full: null,
-    cast: [],
-    images: [],
-    videos: [],
-    similar: []
-  });
+  const [details, setDetails] = useState(null);
 
   useEffect(() => {
-    if (!movie?.id) return;
-
+    if (!movie) return;
     const fetchDetails = async () => {
       const [full, cast, images, videos, similar] = await Promise.all([
         fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json()),
@@ -21,24 +14,12 @@ const MovieDetails = ({ movie, onClose, onPlayTrailer, onToggleMyList, isInMyLis
         fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}/videos?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json()),
         fetch(`${API_CONFIG.TMDB_BASE_URL}/movie/${movie.id}/similar?api_key=${API_CONFIG.TMDB_API_KEY}`, TMDB_API_OPTIONS).then((r) => r.json())
       ]);
-
-      setDetails({
-        full: full || null,
-        cast: Array.isArray(cast?.cast) ? cast.cast : [],
-        images: Array.isArray(images?.backdrops) ? images.backdrops : [],
-        videos: Array.isArray(videos?.results) ? videos.results : [],
-        similar: Array.isArray(similar?.results) ? similar.results : []
-      });
+      setDetails({ full, cast: cast.cast || [], images: images.backdrops || [], videos: videos.results || [], similar: similar.results || [] });
     };
-
-    fetchDetails().catch(() => {
-      setDetails({ full: null, cast: [], images: [], videos: [], similar: [] });
-    });
-  }, [movie?.id]);
+    fetchDetails().catch(() => setDetails(null));
+  }, [movie]);
 
   if (!movie) return null;
-
-  const mediaItems = [...details.videos, ...details.images];
 
   return (
     <div className="fixed inset-0 z-[70] overflow-y-auto bg-[#04010d]/95" onClick={onClose}>
@@ -59,8 +40,8 @@ const MovieDetails = ({ movie, onClose, onPlayTrailer, onToggleMyList, isInMyLis
                 <div className="flex flex-wrap gap-2">{(details?.full?.genres || []).map((genre) => <span key={genre.id} className="rounded-full bg-white/10 px-3 py-1 text-xs">{genre.name}</span>)}</div>
                 <p className="max-w-3xl text-white/85 line-clamp-4">{details?.full?.overview || movie.overview}</p>
                 <div className="flex gap-3">
-                  <button onClick={() => onPlayTrailer(movie)} className="rounded-xl bg-white px-5 py-2 font-semibold text-black">▶ Play Trailer</button>
-                  <button onClick={() => onToggleMyList(movie)} className="rounded-xl bg-white/15 px-5 py-2">{isInMyList ? '✓ In My List' : '➕ Add to My List'}</button>
+                  <button onClick={() => onPlayTrailer(movie)} className="rounded bg-white px-5 py-2 font-semibold text-black">▶ Play Trailer</button>
+                  <button onClick={() => onToggleMyList(movie)} className="rounded bg-white/15 px-5 py-2">{isInMyList ? '✓ In My List' : '➕ Add to My List'}</button>
                 </div>
               </div>
             </div>
@@ -69,7 +50,7 @@ const MovieDetails = ({ movie, onClose, onPlayTrailer, onToggleMyList, isInMyLis
               <div>
                 <h3 className="mb-3 text-lg font-semibold">Cast</h3>
                 <div className="hide-scrollbar flex gap-3 overflow-x-auto">
-                  {details.cast.slice(0, 12).map((actor) => (
+                  {details?.cast?.slice(0, 12).map((actor) => (
                     <div key={actor.id} className="min-w-[140px] rounded-lg bg-white/5 p-2">
                       <img src={actor.profile_path ? `https://image.tmdb.org/t/p/w185${actor.profile_path}` : '/no-movie.png'} alt={actor.name} className="h-36 w-full rounded object-cover" loading="lazy" />
                       <p className="mt-2 line-clamp-1 text-sm">{actor.name}</p>
@@ -81,16 +62,15 @@ const MovieDetails = ({ movie, onClose, onPlayTrailer, onToggleMyList, isInMyLis
               <div>
                 <h3 className="mb-3 text-lg font-semibold">Media</h3>
                 <div className="hide-scrollbar flex gap-3 overflow-x-auto">
-                  {details.videos.slice(0, 8).map((video) => <div key={video.id} className="min-w-[220px] rounded-lg bg-white/10 p-3 text-sm">🎬 {video.name}</div>)}
-                  {details.images.slice(0, 8).map((img) => <img key={img.file_path} src={`https://image.tmdb.org/t/p/w500${img.file_path}`} alt="Scene" className="h-32 min-w-[220px] rounded-lg object-cover" loading="lazy" />)}
-                  {mediaItems.length === 0 && <p className="text-sm text-white/70">No media available</p>}
+                  {details?.videos?.slice(0, 8).map((video) => <div key={video.id} className="min-w-[220px] rounded-lg bg-white/10 p-3 text-sm">🎬 {video.name}</div>)}
+                  {details?.images?.slice(0, 8).map((img) => <img key={img.file_path} src={`https://image.tmdb.org/t/p/w500${img.file_path}`} alt="Scene" className="h-32 min-w-[220px] rounded-lg object-cover" loading="lazy" />)}
                 </div>
               </div>
 
               <div>
                 <h3 className="mb-3 text-lg font-semibold">Similar Movies</h3>
                 <div className="hide-scrollbar flex gap-3 overflow-x-auto">
-                  {details.similar.slice(0, 12).map((similarMovie) => (
+                  {details?.similar?.slice(0, 12).map((similarMovie) => (
                     <button key={similarMovie.id} onClick={() => onMoreInfo(similarMovie)} className="min-w-[160px] text-left">
                       <img src={similarMovie.poster_path ? `https://image.tmdb.org/t/p/w500${similarMovie.poster_path}` : '/no-movie.png'} alt={similarMovie.title} className="aspect-[2/3] w-full rounded-lg object-cover" loading="lazy" />
                       <p className="mt-1 line-clamp-1 text-sm">{similarMovie.title}</p>

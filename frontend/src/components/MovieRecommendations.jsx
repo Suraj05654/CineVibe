@@ -3,24 +3,7 @@ import { API_CONFIG } from '../config';
 
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
 
-const normalizeRecommendations = (payload) => {
-  const candidates = payload?.recommendations || payload?.results || [];
-  if (!Array.isArray(candidates)) return { inputMovie: payload?.input_movie || payload?.inputMovie || '', recommendations: [] };
-  return {
-    inputMovie: payload?.input_movie || payload?.inputMovie || '',
-    recommendations: candidates.map((movie) => ({
-      id: movie.id,
-      title: movie.title || movie.name,
-      poster_path: movie.poster_path,
-      backdrop_path: movie.backdrop_path,
-      vote_average: movie.vote_average,
-      release_date: movie.release_date,
-      overview: movie.overview
-    })).filter((movie) => movie.id)
-  };
-};
-
-const MovieRecommendations = ({ onRecommendationsLoaded, user }) => {
+const MovieRecommendations = ({ onRecommendationsLoaded }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -48,7 +31,6 @@ const MovieRecommendations = ({ onRecommendationsLoaded, user }) => {
   }, [searchTerm, isModalOpen]);
 
   const getRecommendations = async (movieTitle) => {
-    if (!movieTitle?.trim()) return;
     setIsLoading(true);
     setError('');
     try {
@@ -56,12 +38,11 @@ const MovieRecommendations = ({ onRecommendationsLoaded, user }) => {
       const response = await fetch(`${API_CONFIG.BASE_URL}/api/recommendations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ movie_title: movieTitle, num_recommendations: 12, uid })
+        body: JSON.stringify({ movie_title: movieTitle, num_recommendations: 12 })
       });
       if (!response.ok) throw new Error('Could not fetch recommendations.');
       const data = await response.json();
-      const normalized = normalizeRecommendations(data);
-      onRecommendationsLoaded(normalized);
+      onRecommendationsLoaded({ inputMovie: data.input_movie, recommendations: data.recommendations || [] });
       setIsModalOpen(false);
     } catch (err) {
       setError(err.message);
@@ -75,7 +56,7 @@ const MovieRecommendations = ({ onRecommendationsLoaded, user }) => {
       <section className="rounded-2xl border border-white/10 bg-[#130726]/60 p-5 backdrop-blur-md">
         <p className="text-lg font-semibold">Liked something recently? Tell us one movie.</p>
         <p className="mt-1 text-sm text-white/70">We’ll craft a cinematic row tailored to your taste.</p>
-        <button onClick={() => setIsModalOpen(true)} className="mt-4 rounded-xl bg-gradient-to-r from-violet-200 to-indigo-300 px-5 py-2 font-semibold text-[#180531]">Get Suggestions</button>
+        <button onClick={() => setIsModalOpen(true)} className="mt-4 rounded-lg bg-gradient-to-r from-violet-200 to-indigo-300 px-5 py-2 font-semibold text-[#180531]">Get Suggestions</button>
       </section>
 
       {isModalOpen && (
@@ -99,7 +80,7 @@ const MovieRecommendations = ({ onRecommendationsLoaded, user }) => {
               ))}
             </div>
             {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
-            <button onClick={() => getRecommendations(searchTerm)} disabled={isLoading || !searchTerm.trim()} className="mt-4 rounded-xl bg-white px-4 py-2 font-semibold text-black disabled:opacity-60">
+            <button onClick={() => getRecommendations(searchTerm)} disabled={isLoading || !searchTerm.trim()} className="mt-4 rounded bg-white px-4 py-2 font-semibold text-black disabled:opacity-60">
               {isLoading ? 'Finding...' : 'Build Recommendations'}
             </button>
           </div>

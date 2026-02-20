@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDebounce } from 'react-use';
 import Navbar from './components/Navbar';
 import HeroBanner from './components/HeroBanner';
@@ -7,9 +7,7 @@ import TrailerModal from './components/TrailerModal';
 import MovieDetails from './components/MovieDetails';
 import SearchOverlay from './components/SearchOverlay';
 import MovieRecommendations from './components/MovieRecommendations';
-import LoginModal from './components/LoginModal';
 import { API_CONFIG, TMDB_API_OPTIONS } from './config';
-import { authService } from './services/appwriteAuth';
 
 const API_BASE = API_CONFIG.TMDB_BASE_URL;
 const API_KEY = API_CONFIG.TMDB_API_KEY;
@@ -21,11 +19,11 @@ const createRowConfig = (recommendationData, recommendationSourceMovie) => [
   { key: 'topRated', title: 'Top Rated', endpoint: `${API_BASE}/movie/top_rated?api_key=${API_KEY}` },
   { key: 'india', title: 'Popular in India', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=popularity.desc&watch_region=IN&region=IN` },
   { key: 'new', title: 'New Releases', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=release_date.desc&primary_release_date.lte=${new Date().toISOString().split('T')[0]}` },
-  ...(recommendationData.length > 0 ? [{
+  {
     key: 'becauseYouWatched',
     title: recommendationSourceMovie ? `Because You Watched ${recommendationSourceMovie}` : 'Because You Watched',
     items: recommendationData
-  }] : []),
+  },
   { key: 'recommended', title: 'Recommended For You', endpoint: `${API_BASE}/discover/movie?api_key=${API_KEY}&sort_by=vote_average.desc&vote_count.gte=5000` }
 ].filter((row) => row.endpoint || row.items?.length);
 
@@ -39,37 +37,15 @@ const App = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [trailerTarget, setTrailerTarget] = useState(null);
-  const [myList, setMyList] = useState([]);
+  const [myList, setMyList] = useState(() => JSON.parse(localStorage.getItem('cinevibe-my-list') || '[]'));
   const [recommendationData, setRecommendationData] = useState([]);
   const [recommendationSourceMovie, setRecommendationSourceMovie] = useState('');
-  const [user, setUser] = useState(null);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const myListRef = useRef(null);
 
   useDebounce(() => setDebouncedSearchTerm(searchTerm), 450, [searchTerm]);
 
-  const refreshWishlist = async (activeUser = user) => {
-    if (!activeUser?.$id) {
-      setMyList([]);
-      return;
-    }
-
-    try {
-      const list = await authService.getWishlist(activeUser.$id);
-      setMyList(Array.isArray(list) ? list : []);
-    } catch {
-      setMyList([]);
-    }
-  };
-
   useEffect(() => {
-    authService.getUser().then(async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser?.$id) {
-        await refreshWishlist(currentUser);
-      }
-    });
-  }, []);
+    localStorage.setItem('cinevibe-my-list', JSON.stringify(myList));
+  }, [myList]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -109,57 +85,6 @@ const App = () => {
   useEffect(() => {
     if (!debouncedSearchTerm.trim()) {
       setSearchResults([]);
-      return;
-    }
-
-    const runSearch = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/search/movie?api_key=${API_KEY}&query=${encodeURIComponent(debouncedSearchTerm)}`, TMDB_API_OPTIONS);
-        const data = await response.json();
-        setSearchResults(data.results || []);
-      } catch (error) {
-        console.error('Failed searching movies', error);
-        setSearchResults([]);
-      }
-    };
-
-    runSearch();
-  }, [debouncedSearchTerm]);
-
-  const featuredPool = rows.trending || [];
-  const featuredMovie = featuredPool[featuredIndex % Math.max(featuredPool.length, 1)];
-
-  useEffect(() => {
-    if (!featuredPool.length) return;
-    const interval = setInterval(() => {
-      setFeaturedIndex((prev) => (prev + 1) % featuredPool.length);
-    }, 9000);
-
-    return () => clearInterval(interval);
-  }, [featuredPool.length]);
-
-  const isInMyList = (movieId) => myList.some((item) => item.id === movieId);
-
-  const requireLogin = () => setIsLoginOpen(true);
-
-  const toggleMyList = async (movie) => {
-    if (!user?.$id) {
-      requireLogin();
-      return;
-    }
-
-    const next = await authService.toggleWishlist(user.$id, movie);
-    setMyList(Array.isArray(next) ? next : []);
-  };
-
-  const rowConfig = useMemo(
-    () => createRowConfig(recommendationData, recommendationSourceMovie),
-    [recommendationData, recommendationSourceMovie]
-  );
-
-  const handleMyListClick = () => {
-    if (!user?.$id) {
-      requireLogin();
       return;
     }
     myListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -266,6 +191,110 @@ const App = () => {
           setUser(loggedInUser);
           await refreshWishlist(loggedInUser);
         }}
+      />
+    </main>
+  );
+};
+
+    const runSearch = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/search/movie?api_key=${API_KEY}&query=${encodeURIComponent(debouncedSearchTerm)}`, TMDB_API_OPTIONS);
+        const data = await response.json();
+        setSearchResults(data.results || []);
+      } catch (error) {
+        console.error('Failed searching movies', error);
+        setSearchResults([]);
+      }
+    };
+
+    runSearch();
+  }, [debouncedSearchTerm]);
+
+  const featuredPool = rows.trending || [];
+  const featuredMovie = featuredPool[featuredIndex % Math.max(featuredPool.length, 1)];
+
+  useEffect(() => {
+    if (!featuredPool.length) return;
+    const interval = setInterval(() => {
+      setFeaturedIndex((prev) => (prev + 1) % featuredPool.length);
+    }, 9000);
+
+    return () => clearInterval(interval);
+  }, [featuredPool.length]);
+
+  const isInMyList = (movieId) => myList.some((item) => item.id === movieId);
+
+  const toggleMyList = (movie) => {
+    setMyList((current) => {
+      const exists = current.some((item) => item.id === movie.id);
+      if (exists) return current.filter((item) => item.id !== movie.id);
+      return [...current, { id: movie.id, title: movie.title, poster_path: movie.poster_path }];
+    });
+  };
+
+  const rowConfig = useMemo(
+    () => createRowConfig(recommendationData, recommendationSourceMovie),
+    [recommendationData, recommendationSourceMovie]
+  );
+
+  return (
+    <main className="min-h-screen bg-[#030014] text-white">
+      <Navbar onSearchOpen={() => setSearchOpen(true)} myListCount={myList.length} />
+      <HeroBanner
+        movie={featuredMovie}
+        genresMap={genresMap}
+        onPlayTrailer={setTrailerTarget}
+        onMoreInfo={setSelectedMovie}
+        onToggleMyList={toggleMyList}
+        isInMyList={isInMyList(featuredMovie?.id)}
+      />
+
+      <section className="relative z-20 -mt-20 space-y-10 px-4 pb-16 md:px-8 lg:px-12">
+        <MovieRecommendations
+          onRecommendationsLoaded={(payload) => {
+            setRecommendationSourceMovie(payload.inputMovie);
+            setRecommendationData(payload.recommendations || []);
+          }}
+        />
+
+        {rowConfig.map((row) => (
+          <ContentRow
+            key={row.key}
+            title={row.title}
+            movies={rows[row.key] || row.items || []}
+            genresMap={genresMap}
+            onPlayTrailer={setTrailerTarget}
+            onMoreInfo={setSelectedMovie}
+            onToggleMyList={toggleMyList}
+            isInMyList={isInMyList}
+          />
+        ))}
+      </section>
+
+      <SearchOverlay
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        results={searchResults}
+        genresMap={genresMap}
+        onPlayTrailer={setTrailerTarget}
+        onMoreInfo={setSelectedMovie}
+        onToggleMyList={toggleMyList}
+        isInMyList={isInMyList}
+      />
+
+      <TrailerModal movie={trailerTarget} onClose={() => setTrailerTarget(null)} />
+
+      <MovieDetails
+        movie={selectedMovie}
+        onClose={() => setSelectedMovie(null)}
+        genresMap={genresMap}
+        posterBuilder={buildPoster}
+        onPlayTrailer={setTrailerTarget}
+        onToggleMyList={toggleMyList}
+        isInMyList={selectedMovie ? isInMyList(selectedMovie.id) : false}
+        onMoreInfo={setSelectedMovie}
       />
     </main>
   );

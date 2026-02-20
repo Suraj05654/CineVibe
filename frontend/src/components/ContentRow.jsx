@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import MovieCard from './MovieCard';
 
-const ContentRow = ({ title, movies, genresMap, onPlayTrailer, onMoreInfo, onToggleMyList, isInMyList, onRequireLogin, user, sectionId }) => {
+const ContentRow = ({ title, movies, genresMap, onPlayTrailer, onMoreInfo, onToggleMyList, isInMyList }) => {
   const [visibleCount, setVisibleCount] = useState(10);
   const visibleMovies = movies.slice(0, visibleCount);
 
@@ -13,7 +13,7 @@ const ContentRow = ({ title, movies, genresMap, onPlayTrailer, onMoreInfo, onTog
   };
 
   return (
-    <section className="space-y-4" id={sectionId}>
+    <section className="space-y-4">
       <h2 className="text-xl font-semibold text-white md:text-2xl">{title}</h2>
       <div onScroll={handleScroll} className="hide-scrollbar overflow-x-auto overflow-y-visible px-1 py-4">
         <div className="flex flex-nowrap gap-x-4 md:gap-x-5">
@@ -26,8 +26,6 @@ const ContentRow = ({ title, movies, genresMap, onPlayTrailer, onMoreInfo, onTog
                 onMoreInfo={onMoreInfo}
                 onToggleMyList={onToggleMyList}
                 isInMyList={isInMyList(movie.id)}
-                onRequireLogin={onRequireLogin}
-                user={user}
               />
             </div>
           ))}

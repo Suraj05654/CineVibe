@@ -1,6 +1,6 @@
 import ContentRow from './ContentRow';
 
-const SearchOverlay = ({ isOpen, onClose, searchTerm, setSearchTerm, results, genresMap, onPlayTrailer, onMoreInfo, onToggleMyList, isInMyList, onRequireLogin, user }) => {
+const SearchOverlay = ({ isOpen, onClose, searchTerm, setSearchTerm, results, genresMap, onPlayTrailer, onMoreInfo, onToggleMyList, isInMyList }) => {
   if (!isOpen) return null;
 
   return (
@@ -27,8 +27,6 @@ const SearchOverlay = ({ isOpen, onClose, searchTerm, setSearchTerm, results, ge
             onMoreInfo={onMoreInfo}
             onToggleMyList={onToggleMyList}
             isInMyList={isInMyList}
-            onRequireLogin={onRequireLogin}
-            user={user}
           />
         )}
       </div>

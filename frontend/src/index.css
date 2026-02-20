@@ -1,0 +1,36 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #030014;
+  --font-dm-sans: DM Sans, sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    font-family: var(--font-dm-sans);
+    background: radial-gradient(circle at top, rgba(50, 22, 97, 0.4), transparent 45%), #030014;
+    color: white;
+    overflow-x: hidden;
+  }
+}
+
+@utility hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.hero-skeleton {
+  height: 100vh;
+  background: linear-gradient(115deg, rgba(20, 8, 42, 0.95), rgba(8, 4, 20, 0.98));
+}

@@ -177,7 +177,9 @@ const App = () => {
   }, [featuredMovie])
 
   return (
-    <main className="app-shell" style={heroBackdrop ? { backgroundImage: `url(${heroBackdrop})` } : undefined}>
+    <main className="app-shell">
+      <div className="blue-overlay" />
+
       <div className="wrapper">
         <header className="hero" style={heroBackdrop ? { backgroundImage: `url(${heroBackdrop})` } : undefined}>
           <div className="hero-mask" />
@@ -186,14 +188,15 @@ const App = () => {
               <img src="/logo.png" alt="CineVibe logo" />
               <span>CineVibe</span>
             </div>
+            <p>Blue Edition</p>
           </nav>
 
           <div className="hero-content">
-            <p className="eyebrow">Curated movie intelligence</p>
-            <h1>Discover Exceptional Films with Confidence</h1>
+            <p className="eyebrow">Streaming-grade movie discovery</p>
+            <h1>Discover Movies in a Premium Blue Experience</h1>
             <p>
-              Explore trusted TMDB data with powerful filters, detailed insights, and high-quality trailer playback in
-              one professional experience.
+              Search, filter, browse by live TMDB categories, open full metadata, and watch trailers in a full-size
+              cinematic player.
             </p>
             {featuredMovie && (
               <div className="hero-actions">
@@ -293,10 +296,6 @@ const App = () => {
               ))}
             </div>
           )}
-        </section>
-
-        <section className="recommendations-wrap">
-          <MovieRecommendations />
         </section>
 
         {SECTION_CONFIG.map((section) => (

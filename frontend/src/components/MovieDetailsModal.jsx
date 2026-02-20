@@ -47,7 +47,7 @@ export default function MovieDetailsModal({ movie, onClose, onPlayTrailer }) {
               target="_blank"
               rel="noreferrer"
             >
-              Open movie page
+              View on TMDB
             </a>
           </div>
 

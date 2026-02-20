@@ -5,6 +5,7 @@ import Spinner from './components/Spinner.jsx'
 import MovieCard from './components/MovieCard.jsx'
 import TrailerModal from './components/TrailerModal.jsx'
 import MovieDetailsModal from './components/MovieDetailsModal.jsx'
+import MovieRecommendations from './components/MovieRecommendations.jsx'
 import { API_CONFIG, TMDB_API_OPTIONS } from './config.js'
 
 const SECTION_CONFIG = [

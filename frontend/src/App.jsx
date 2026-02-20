@@ -53,6 +53,11 @@ const App = () => {
   useDebounce(() => setDebouncedSearchTerm(searchTerm), 450, [searchTerm]);
 
   const loadWishlist = async (userId) => {
+    if (!userId) {
+      setMyList([]);
+      return;
+    }
+
     const items = await getWishlistByUser(userId);
     setMyList(items || []);
   };
@@ -143,14 +148,40 @@ const App = () => {
   const toggleMyList = async (movie) => {
     if (!requireAuth()) return;
 
-    const exists = isInMyList(movie.id);
-    if (exists) {
-      await removeWishlistMovie(user.$id, movie.id);
-    } else {
-      await addWishlistMovie(user.$id, movie);
+    const movieId = Number(movie.id);
+    const existingItem = myList.find((item) => item.id === movieId);
+
+    if (existingItem) {
+      setMyList((prev) => prev.filter((item) => item.id !== movieId));
+      try {
+        await removeWishlistMovie(existingItem.documentId);
+      } catch (error) {
+        console.error('Failed removing from wishlist', error);
+        setMyList((prev) => {
+          if (prev.some((item) => item.id === movieId)) return prev;
+          return [existingItem, ...prev];
+        });
+      }
+      return;
     }
 
-    await loadWishlist(user.$id);
+    const optimisticItem = {
+      id: movieId,
+      title: movie.title,
+      poster_path: movie.poster_path || ''
+    };
+
+    setMyList((prev) => [optimisticItem, ...prev.filter((item) => item.id !== movieId)]);
+
+    try {
+      const persistedMovie = await addWishlistMovie(user.$id, movie);
+      if (persistedMovie) {
+        setMyList((prev) => prev.map((item) => (item.id === movieId ? persistedMovie : item)));
+      }
+    } catch (error) {
+      console.error('Failed adding to wishlist', error);
+      setMyList((prev) => prev.filter((item) => item.id !== movieId));
+    }
   };
 
   const handleLogin = async (email, password) => {
@@ -230,7 +261,7 @@ const App = () => {
         isInMyList={isInMyList(featuredMovie?.id)}
       />
 
-      <section className="relative z-20 -mt-12 space-y-10 px-4 pb-16 md:px-8 lg:px-12">
+      <section className="relative z-20 mt-10 space-y-10 px-4 pb-16 md:px-8 lg:px-12">
         <MovieRecommendations
           userId={user?.$id ?? 'guest'}
           refreshSignal={recommendationRefreshSignal}

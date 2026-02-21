@@ -11,7 +11,12 @@ import MovieRecommendations from './components/MovieRecommendations';
 import LoginModal from './components/LoginModal';
 import { API_CONFIG, TMDB_API_OPTIONS } from './config';
 import { account } from './services/appwrite';
-import { addToWatchlist, fetchUserWatchlist, removeFromWatchlist } from './services/wishlist';
+import {
+  addToWatchlist,
+  fetchUserWatchlist,
+  removeFromWatchlist,
+  verifyWishlistCollectionAccess
+} from './services/wishlist';
 
 const API_BASE = API_CONFIG.TMDB_BASE_URL;
 const API_KEY = API_CONFIG.TMDB_API_KEY;
@@ -59,29 +64,69 @@ const App = () => {
     setAuthModalOpen(true);
   };
 
+  const showUiError = (message) => {
+    setAuthError(message);
+    if (!authModalOpen) {
+      window.alert(message);
+    }
+  };
+
+  const verifySession = async () => {
+    try {
+      const current = await account.get();
+      console.log('SESSION EXISTS', current);
+      setUser(current);
+      return current;
+    } catch (error) {
+      console.log('NO SESSION');
+      console.error(error);
+      setUser(null);
+      setMyList([]);
+      return null;
+    }
+  };
+
   const fetchUserWishlist = async (userId) => {
     if (!userId) {
+      console.log('FETCH WISHLIST STOPPED: NO USER');
       setMyList([]);
       return;
     }
 
-    const items = await fetchUserWatchlist(userId);
-    setMyList(items || []);
+    try {
+      const items = await fetchUserWatchlist(userId);
+      setMyList(items || []);
+    } catch (error) {
+      console.error('WISHLIST FETCH FAILED', error);
+      showUiError(error?.message || 'Failed to fetch wishlist.');
+      throw error;
+    }
+  };
+
+  const verifyWishlistDatabase = async (userId) => {
+    try {
+      await verifyWishlistCollectionAccess(userId);
+    } catch (error) {
+      console.error('WISHLIST DATABASE VERIFICATION FAILED', error);
+      showUiError(error?.message || 'Wishlist permissions are invalid.');
+      throw error;
+    }
   };
 
   useEffect(() => {
     const bootstrapAuth = async () => {
-      try {
-        const current = await account.get();
-        setUser(current);
-        await fetchUserWishlist(current.$id);
-      } catch {
-        setUser(null);
-        setMyList([]);
+      const current = await verifySession();
+      if (!current) {
+        return;
       }
+
+      await verifyWishlistDatabase(current.$id);
+      await fetchUserWishlist(current.$id);
     };
 
-    bootstrapAuth();
+    bootstrapAuth().catch((error) => {
+      console.error('BOOTSTRAP AUTH FAILED', error);
+    });
   }, []);
 
   useEffect(() => {
@@ -147,22 +192,17 @@ const App = () => {
   const isInMyList = (movieId) => myList.some((item) => item.id === movieId);
 
   const requireAuth = async () => {
-    if (!user) {
+    const current = await verifySession();
+    if (!current) {
       openAuthModal('login');
       return null;
     }
 
     try {
-      const current = await account.get();
-      if (current?.$id !== user.$id) {
-        setUser(current);
-        await fetchUserWishlist(current.$id);
-      }
+      await verifyWishlistDatabase(current.$id);
       return current;
-    } catch {
-      setUser(null);
-      setMyList([]);
-      openAuthModal('login');
+    } catch (error) {
+      console.error('AUTH REQUIREMENT FAILED', error);
       return null;
     }
   };
@@ -171,42 +211,33 @@ const App = () => {
     const existingItem = myList.find((item) => item.id === movieId);
     if (!existingItem) return;
 
-    setMyList((prev) => prev.filter((item) => item.id !== movieId));
-
     try {
       await removeFromWatchlist(existingItem.documentId);
+      setMyList((prev) => prev.filter((item) => item.id !== movieId));
     } catch (error) {
       console.error('Failed removing from wishlist', error);
-      setMyList((prev) => {
-        if (prev.some((item) => item.id === movieId)) return prev;
-        return [existingItem, ...prev];
-      });
+      showUiError(error?.message || 'Failed removing from wishlist.');
+      throw error;
     }
   };
 
   const handleAddToWatchlist = async (movie, sessionUser) => {
-    const movieId = Number(movie.id);
-    const optimisticItem = {
-      id: movieId,
-      movieId: String(movie.id),
-      title: movie.title,
-      poster_path: movie.poster_path || ''
-    };
-
-    setMyList((prev) => [optimisticItem, ...prev.filter((item) => item.id !== movieId)]);
-
     try {
       const persistedMovie = await addToWatchlist(sessionUser.$id, movie);
-      setMyList((prev) => prev.map((item) => (item.id === movieId ? persistedMovie : item)));
+      setMyList((prev) => [persistedMovie, ...prev.filter((item) => item.id !== persistedMovie.id)]);
     } catch (error) {
       console.error('Failed adding to wishlist', error);
-      setMyList((prev) => prev.filter((item) => item.id !== movieId));
+      showUiError(error?.message || 'Failed adding to wishlist.');
+      throw error;
     }
   };
 
   const toggleMyList = async (movie) => {
     const sessionUser = await requireAuth();
-    if (!sessionUser) return;
+    if (!sessionUser) {
+      console.log('WISHLIST ACTION STOPPED: NO SESSION');
+      return;
+    }
 
     const movieId = Number(movie.id);
     if (myList.some((item) => item.id === movieId)) {
@@ -222,12 +253,16 @@ const App = () => {
     setAuthLoading(true);
     try {
       await account.createEmailPasswordSession(email, password);
+      console.log('LOGIN SESSION CREATED');
       const current = await account.get();
+      console.log('SESSION EXISTS', current);
       setUser(current);
+      await verifyWishlistDatabase(current.$id);
       await fetchUserWishlist(current.$id);
       setRecommendationRefreshSignal((value) => value + 1);
       setAuthModalOpen(false);
     } catch (error) {
+      console.error(error);
       setAuthError(error?.message || 'Login failed.');
     } finally {
       setAuthLoading(false);
@@ -239,13 +274,18 @@ const App = () => {
     setAuthLoading(true);
     try {
       await account.create(ID.unique(), email, password, name);
+      console.log('USER CREATED');
       await account.createEmailPasswordSession(email, password);
+      console.log('SESSION CREATED AFTER SIGNUP');
       const current = await account.get();
+      console.log('SESSION EXISTS', current);
       setUser(current);
+      await verifyWishlistDatabase(current.$id);
       await fetchUserWishlist(current.$id);
       setRecommendationRefreshSignal((value) => value + 1);
       setAuthModalOpen(false);
     } catch (error) {
+      console.error(error);
       setAuthError(error?.message || 'Sign up failed.');
     } finally {
       setAuthLoading(false);

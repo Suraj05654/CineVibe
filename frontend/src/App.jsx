@@ -11,7 +11,7 @@ import MovieRecommendations from './components/MovieRecommendations';
 import LoginModal from './components/LoginModal';
 import { API_CONFIG, TMDB_API_OPTIONS } from './config';
 import { account } from './services/appwrite';
-import { addWishlistMovie, getWishlistByUser, removeWishlistMovie } from './services/wishlist';
+import { addToWatchlist, fetchUserWatchlist, removeFromWatchlist } from './services/wishlist';
 
 const API_BASE = API_CONFIG.TMDB_BASE_URL;
 const API_KEY = API_CONFIG.TMDB_API_KEY;
@@ -45,20 +45,27 @@ const App = () => {
   const [recommendationData, setRecommendationData] = useState([]);
   const [recommendationSourceMovie, setRecommendationSourceMovie] = useState('');
   const [user, setUser] = useState(null);
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [recommendationRefreshSignal, setRecommendationRefreshSignal] = useState(0);
 
   useDebounce(() => setDebouncedSearchTerm(searchTerm), 450, [searchTerm]);
 
-  const loadWishlist = async (userId) => {
+  const openAuthModal = (mode = 'login') => {
+    setAuthMode(mode);
+    setAuthError('');
+    setAuthModalOpen(true);
+  };
+
+  const fetchUserWishlist = async (userId) => {
     if (!userId) {
       setMyList([]);
       return;
     }
 
-    const items = await getWishlistByUser(userId);
+    const items = await fetchUserWatchlist(userId);
     setMyList(items || []);
   };
 
@@ -67,7 +74,7 @@ const App = () => {
       try {
         const current = await account.get();
         setUser(current);
-        await loadWishlist(current.$id);
+        await fetchUserWishlist(current.$id);
       } catch {
         setUser(null);
         setMyList([]);
@@ -141,7 +148,7 @@ const App = () => {
 
   const requireAuth = async () => {
     if (!user) {
-      setLoginOpen(true);
+      openAuthModal('login');
       return null;
     }
 
@@ -149,14 +156,51 @@ const App = () => {
       const current = await account.get();
       if (current?.$id !== user.$id) {
         setUser(current);
-        await loadWishlist(current.$id);
+        await fetchUserWishlist(current.$id);
       }
       return current;
     } catch {
       setUser(null);
       setMyList([]);
-      setLoginOpen(true);
+      openAuthModal('login');
       return null;
+    }
+  };
+
+  const handleRemoveFromWatchlist = async (movieId) => {
+    const existingItem = myList.find((item) => item.id === movieId);
+    if (!existingItem) return;
+
+    setMyList((prev) => prev.filter((item) => item.id !== movieId));
+
+    try {
+      await removeFromWatchlist(existingItem.documentId);
+    } catch (error) {
+      console.error('Failed removing from wishlist', error);
+      setMyList((prev) => {
+        if (prev.some((item) => item.id === movieId)) return prev;
+        return [existingItem, ...prev];
+      });
+    }
+  };
+
+  const handleAddToWatchlist = async (movie, sessionUser) => {
+    const movieId = Number(movie.id);
+    const optimisticItem = {
+      id: movieId,
+      movieId: String(movie.id),
+      title: movie.title,
+      poster_path: movie.poster_path || ''
+    };
+
+    setMyList((prev) => [optimisticItem, ...prev.filter((item) => item.id !== movieId)]);
+
+    try {
+      const persistedMovie = await addToWatchlist(sessionUser.$id, movie);
+      setMyList((prev) => prev.map((item) => (item.id === movieId ? persistedMovie : item)));
+    } catch (error) {
+      console.error('Failed adding to wishlist', error);
+      setMyList((prev) => prev.filter((item) => item.id !== movieId));
     }
   };
 
@@ -165,39 +209,12 @@ const App = () => {
     if (!sessionUser) return;
 
     const movieId = Number(movie.id);
-    const existingItem = myList.find((item) => item.id === movieId);
-
-    if (existingItem) {
-      setMyList((prev) => prev.filter((item) => item.id !== movieId));
-      try {
-        await removeWishlistMovie(sessionUser.$id, existingItem.documentId);
-      } catch (error) {
-        console.error('Failed removing from wishlist', error);
-        setMyList((prev) => {
-          if (prev.some((item) => item.id === movieId)) return prev;
-          return [existingItem, ...prev];
-        });
-      }
+    if (myList.some((item) => item.id === movieId)) {
+      await handleRemoveFromWatchlist(movieId);
       return;
     }
 
-    const optimisticItem = {
-      id: movieId,
-      title: movie.title,
-      poster_path: movie.poster_path || ''
-    };
-
-    setMyList((prev) => [optimisticItem, ...prev.filter((item) => item.id !== movieId)]);
-
-    try {
-      const persistedMovie = await addWishlistMovie(sessionUser.$id, movie);
-      if (persistedMovie) {
-        setMyList((prev) => prev.map((item) => (item.id === movieId ? persistedMovie : item)));
-      }
-    } catch (error) {
-      console.error('Failed adding to wishlist', error);
-      setMyList((prev) => prev.filter((item) => item.id !== movieId));
-    }
+    await handleAddToWatchlist(movie, sessionUser);
   };
 
   const handleLogin = async (email, password) => {
@@ -207,9 +224,9 @@ const App = () => {
       await account.createEmailPasswordSession(email, password);
       const current = await account.get();
       setUser(current);
-      await loadWishlist(current.$id);
+      await fetchUserWishlist(current.$id);
       setRecommendationRefreshSignal((value) => value + 1);
-      setLoginOpen(false);
+      setAuthModalOpen(false);
     } catch (error) {
       setAuthError(error?.message || 'Login failed.');
     } finally {
@@ -225,9 +242,9 @@ const App = () => {
       await account.createEmailPasswordSession(email, password);
       const current = await account.get();
       setUser(current);
-      await loadWishlist(current.$id);
+      await fetchUserWishlist(current.$id);
       setRecommendationRefreshSignal((value) => value + 1);
-      setLoginOpen(false);
+      setAuthModalOpen(false);
     } catch (error) {
       setAuthError(error?.message || 'Sign up failed.');
     } finally {
@@ -236,11 +253,16 @@ const App = () => {
   };
 
   const handleLogout = async () => {
-    await account.deleteSession('current');
-    setUser(null);
-    setMyList([]);
-    setRecommendationData([]);
-    setRecommendationSourceMovie('');
+    try {
+      await account.deleteSession('current');
+    } catch (error) {
+      console.error('Failed to logout cleanly', error);
+    } finally {
+      setUser(null);
+      setMyList([]);
+      setRecommendationData([]);
+      setRecommendationSourceMovie('');
+    }
   };
 
   const rowConfig = useMemo(
@@ -264,7 +286,7 @@ const App = () => {
         onSearchOpen={() => setSearchOpen(true)}
         myListCount={myList.length}
         onMyListClick={handleMyListClick}
-        onAuthAction={() => setLoginOpen(true)}
+        onAuthAction={() => openAuthModal('login')}
         onBrowseClick={handleBrowseClick}
         user={user}
         onLogout={handleLogout}
@@ -330,8 +352,10 @@ const App = () => {
       />
 
       <LoginModal
-        isOpen={loginOpen}
-        onClose={() => setLoginOpen(false)}
+        isOpen={authModalOpen}
+        mode={authMode}
+        onModeChange={setAuthMode}
+        onClose={() => setAuthModalOpen(false)}
         onLogin={handleLogin}
         onSignup={handleSignup}
         loading={authLoading}

@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 
-const LoginModal = ({ isOpen, onClose, onLogin, onSignup, loading, error }) => {
-  const [isSignupMode, setIsSignupMode] = useState(false);
+const LoginModal = ({ isOpen, mode = 'login', onModeChange, onClose, onLogin, onSignup, loading, error }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  const isSignupMode = mode === 'signup';
+
   useEffect(() => {
     if (!isOpen) {
-      setIsSignupMode(false);
       setName('');
       setEmail('');
       setPassword('');
@@ -70,7 +70,7 @@ const LoginModal = ({ isOpen, onClose, onLogin, onSignup, loading, error }) => {
         </form>
         <button
           type="button"
-          onClick={() => setIsSignupMode((prev) => !prev)}
+          onClick={() => onModeChange(isSignupMode ? 'login' : 'signup')}
           className="mt-4 text-sm text-white/80 underline-offset-4 hover:text-white hover:underline"
         >
           {isSignupMode ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
